@@ -1,0 +1,81 @@
+[package]
+name = "sw"
+version = "0.1.0"
+edition = "2021"
+description = "A fast project switcher for developers"
+license = "MIT"
+authors = ["Your Name <your.email@example.com>"]
+repository = "https://github.com/yourusername/sw"
+
+[[bin]]
+name = "sw"
+path = "src/main.rs"
+
+[dependencies]
+# CLI & argument parsing
+clap = { version = "4.5", features = ["derive", "env"] }
+clap_complete = "4.5"
+
+# Interactive TUI
+ratatui = "0.29"
+crossterm = "0.29"
+
+# Fuzzy search
+fuzzy-matcher = "0.3"
+skim = { version = "0.17", optional = true }
+
+# Filesystem operations
+walkdir = "2.5"
+ignore = "0.4"
+
+# Git operations
+git2 = { version = "0.20", default-features = false }
+
+# Process and CLI detection
+which = "7.0"
+dialoguer = "0.11"
+
+# GitHub API - removed, using gh CLI instead
+# octocrab = { version = "0.44", optional = true }
+# tokio = { version = "1.45", features = ["full"], optional = true }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+
+# System directories
+directories = "5.0"
+dirs = "5.0"
+
+# Utility
+# which = "6.0" - moved to process section above
+# dialoguer = "0.11" - moved to process section above
+
+# Concurrency
+rayon = "1.10"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.20"
+mockall = "0.13"
+# tokio-test = "0.4" - removed since we no longer use tokio
+
+[features]
+default = []
+# github = ["octocrab", "tokio"] - removed, using gh CLI instead
+# async = ["tokio"] - removed
+skim-fuzzy = ["skim"]
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort" 
