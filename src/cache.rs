@@ -128,8 +128,7 @@ impl Cache {
     pub fn save_projects(&self, projects: &ProjectList) -> Result<()> {
         let cache_path = self.projects_cache_path();
         
-        let data = bincode::serialize(projects.projects())
-            .map_err(|e| anyhow::anyhow!("Failed to serialize cache: {}", e))?;
+        let data = bincode::serialize(projects.projects()).map_err(|e| anyhow::anyhow!("Failed to serialize cache: {}", e))?;
 
         
         let mut last_error = None;
@@ -171,8 +170,7 @@ impl Cache {
     pub fn save_github_projects(&self, projects: &ProjectList) -> Result<()> {
         let cache_path = self.github_cache_path();
         
-        let data = bincode::serialize(projects.projects())
-            .map_err(|e| anyhow::anyhow!("Failed to serialize GitHub cache: {}", e))?;
+        let data = bincode::serialize(projects.projects()).map_err(|e| anyhow::anyhow!("Failed to serialize GitHub cache: {}", e))?;
 
         
         let mut last_error = None;

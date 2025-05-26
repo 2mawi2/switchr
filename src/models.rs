@@ -5,26 +5,26 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ProjectSource {
-    
+    /// Project found in local filesystem
     Local,
-    
+    /// Project found in Cursor's workspace storage
     Cursor,
-    
+    /// Project found in GitHub repositories
     GitHub,
 }
 
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
-    
+    /// The project name (usually the directory name)
     pub name: String,
-    
+    /// The path to the project directory
     pub path: PathBuf,
-    
+    /// When the project was last modified (if available)
     pub last_modified: Option<DateTime<Utc>>,
-    
+    /// Where this project was discovered
     pub source: ProjectSource,
-    
+    /// GitHub URL if this is a GitHub project
     pub github_url: Option<String>,
 }
 
