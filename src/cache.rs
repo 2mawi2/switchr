@@ -36,10 +36,6 @@ impl Cache {
         self.cache_dir.join("sw_github.cache")
     }
 
-    pub fn is_cache_fresh(&self) -> bool {
-        self.is_cache_valid(&self.projects_cache_path())
-    }
-
     pub fn is_cache_valid<P: AsRef<Path>>(&self, cache_path: P) -> bool {
         let path = cache_path.as_ref();
         
