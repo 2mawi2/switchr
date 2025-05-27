@@ -43,8 +43,7 @@ fn scan_directory(base_dir: &Path) -> Result<Vec<Project>> {
     }
 
     let mut potential_projects = Vec::new();
-    
-    // First pass: quickly find all potential project directories
+
     let walker = WalkBuilder::new(base_dir)
         .max_depth(Some(3))
         .hidden(false)
@@ -75,13 +74,11 @@ fn scan_directory(base_dir: &Path) -> Result<Vec<Project>> {
         }
     }
 
-    // Second pass: parallel timestamp extraction with timeouts
     let projects: Vec<Project> = potential_projects
         .into_par_iter()
         .map(|(name, path)| {
             let mut project = Project::new_local(name, path.clone());
-            
-            // Quick timestamp extraction with timeout
+
             if let Some(timestamp) = get_project_timestamp_fast(&path) {
                 project = project.with_last_modified(timestamp);
             }
@@ -100,7 +97,6 @@ fn is_hidden_directory(path: &Path) -> bool {
 }
 
 fn is_project_directory(path: &Path) -> bool {
-    // Fast check: just look for .git directory
     has_git_directory(path)
 }
 
@@ -108,55 +104,46 @@ fn has_git_directory(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-// Optimized timestamp extraction with timeout and caching
 fn get_project_timestamp_fast(path: &Path) -> Option<DateTime<Utc>> {
-    // Set a timeout for git operations to prevent slow repos from blocking startup
     const GIT_TIMEOUT_MS: u64 = 100; // 100ms timeout
-    
+
     let start_time = Instant::now();
-    
-    // Try git first, but with a quick timeout
+
     if let Some(git_timestamp) = get_git_last_commit_time_fast(path, GIT_TIMEOUT_MS) {
         return Some(git_timestamp);
     }
-    
-    // If git takes too long or fails, fall back to directory timestamp
+
     if start_time.elapsed().as_millis() > GIT_TIMEOUT_MS as u128 {
         return get_directory_modified_time(path);
     }
 
-    // Final fallback
     get_directory_modified_time(path)
 }
 
 fn get_git_last_commit_time_fast(path: &Path, timeout_ms: u64) -> Option<DateTime<Utc>> {
     let start_time = Instant::now();
-    
-    // Quick timeout check
+
     if start_time.elapsed().as_millis() > timeout_ms as u128 {
         return None;
     }
-    
-    // Try to open repository quickly
+
     let repo = Repository::open(path).ok()?;
-    
-    // Check timeout again after opening repo
+
     if start_time.elapsed().as_millis() > timeout_ms as u128 {
         return None;
     }
-    
-    // Quick head access
+
     let head = repo.head().ok()?;
     let commit = head.peel_to_commit().ok()?;
     let timestamp = commit.time();
-    
+
     DateTime::from_timestamp(timestamp.seconds(), 0)
 }
 
 fn get_directory_modified_time(path: &Path) -> Option<DateTime<Utc>> {
     let metadata = fs::metadata(path).ok()?;
     let modified = metadata.modified().ok()?;
-    
+
     DateTime::from_timestamp(
         modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
         0,
@@ -174,14 +161,14 @@ mod tests {
     fn create_test_project(base_dir: &Path, name: &str, project_file: &str) -> PathBuf {
         let project_dir = base_dir.join(name);
         fs::create_dir_all(&project_dir).unwrap();
-        
-        
+
+
         Repository::init(&project_dir).unwrap();
-        
-        
+
+
         fs::write(project_dir.join(project_file), "").unwrap();
-        
-        
+
+
         match project_file {
             "Cargo.toml" => {
                 fs::create_dir_all(project_dir.join("src")).unwrap();
@@ -194,40 +181,40 @@ mod tests {
                 fs::write(project_dir.join("README.md"), "# Test Project").unwrap();
             }
         }
-        
+
         project_dir
     }
 
     fn create_git_project(base_dir: &Path, name: &str) -> PathBuf {
         let project_dir = base_dir.join(name);
         fs::create_dir_all(&project_dir).unwrap();
-        
-        
+
+
         Repository::init(&project_dir).unwrap();
-        
-        
+
+
         fs::write(project_dir.join("README.md"), "# Git Project").unwrap();
-        
+
         project_dir
     }
 
     #[test]
     fn test_is_project_directory() {
         let temp_dir = TempDir::new().unwrap();
-        
-        
+
+
         let rust_project = create_test_project(temp_dir.path(), "rust-project", "Cargo.toml");
         assert!(is_project_directory(&rust_project));
 
-        
+
         let node_project = create_test_project(temp_dir.path(), "node-project", "package.json");
         assert!(is_project_directory(&node_project));
 
-        
+
         let git_project = create_git_project(temp_dir.path(), "git-project");
         assert!(is_project_directory(&git_project));
 
-        
+
         let empty_dir = temp_dir.path().join("empty");
         fs::create_dir_all(&empty_dir).unwrap();
         assert!(!is_project_directory(&empty_dir));
@@ -236,7 +223,7 @@ mod tests {
     #[test]
     fn test_is_hidden_directory() {
         let temp_dir = TempDir::new().unwrap();
-        
+
         let hidden_dir = temp_dir.path().join(".hidden");
         fs::create_dir_all(&hidden_dir).unwrap();
         assert!(is_hidden_directory(&hidden_dir));
@@ -249,41 +236,41 @@ mod tests {
     #[test]
     fn test_scan_directory() {
         let temp_dir = TempDir::new().unwrap();
-        
-        
+
+
         create_test_project(temp_dir.path(), "rust-app", "Cargo.toml");
         create_test_project(temp_dir.path(), "node-app", "package.json");
         create_git_project(temp_dir.path(), "git-repo");
-        
-        
+
+
         let hidden_dir = temp_dir.path().join(".hidden");
         fs::create_dir_all(&hidden_dir).unwrap();
         fs::write(hidden_dir.join("Cargo.toml"), "").unwrap();
 
-        
+
         let empty_dir = temp_dir.path().join("empty");
         fs::create_dir_all(&empty_dir).unwrap();
 
         let projects = scan_directory(temp_dir.path()).unwrap();
-        
+
         assert_eq!(projects.len(), 3);
-        
+
         let project_names: Vec<&str> = projects.iter().map(|p| p.name.as_str()).collect();
         assert!(project_names.contains(&"rust-app"));
         assert!(project_names.contains(&"node-app"));
         assert!(project_names.contains(&"git-repo"));
-        assert!(!project_names.contains(&".hidden")); 
-        assert!(!project_names.contains(&"empty"));   
+        assert!(!project_names.contains(&".hidden"));
+        assert!(!project_names.contains(&"empty"));
 
-        
+
         assert!(projects.iter().all(|p| p.source == ProjectSource::Local));
     }
 
     #[test]
     fn test_local_scanner() {
         let temp_dir = TempDir::new().unwrap();
-        
-        
+
+
         create_test_project(temp_dir.path(), "project1", "Cargo.toml");
         create_test_project(temp_dir.path(), "project2", "package.json");
 
@@ -319,8 +306,8 @@ mod tests {
     #[test]
     fn test_project_file_detection() {
         let temp_dir = TempDir::new().unwrap();
-        
-        
+
+
         let project_files = [
             "Cargo.toml", "package.json", "pyproject.toml", "setup.py",
             "requirements.txt", "go.mod", "pom.xml", "build.gradle",
@@ -335,11 +322,11 @@ mod tests {
                 file
             );
         }
-        
-        
+
+
         let non_git_dir = temp_dir.path().join("not-a-git-repo");
         fs::create_dir_all(&non_git_dir).unwrap();
         fs::write(non_git_dir.join("Cargo.toml"), "").unwrap();
         assert!(!is_project_directory(&non_git_dir));
     }
-} 
+}
