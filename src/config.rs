@@ -166,26 +166,44 @@ fn default_project_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     
     if let Some(home) = dirs::home_dir() {
-        
+        // Prioritize directories that are most commonly used and likely to exist
         let candidates = [
-            "Documents/git",
-            "Documents/projects", 
-            "Projects",
-            "Code",
-            "src",
-            "workspace",
+            "Code",           // VS Code default
+            "Projects",       // Common name
+            "Documents/git",  // Git convention
+            "src",           // Development convention
+            "workspace",     // IDE convention
+            "Documents/projects", // Alternative location
         ];
 
+        // Only add directories that actually exist to avoid scanning non-existent paths
         for candidate in &candidates {
             let path = home.join(candidate);
-            if path.exists() {
+            if path.exists() && path.is_dir() {
                 dirs.push(path);
+                // Limit to first 2-3 existing directories for faster initial scans
+                if dirs.len() >= 2 {
+                    break;
+                }
             }
         }
 
-        
+        // If no standard directories exist, create a reasonable default
         if dirs.is_empty() {
-            dirs.push(home.join("Documents/git"));
+            // Check for the most common ones first
+            let fallback_candidates = ["Code", "Projects", "Documents/git"];
+            for candidate in &fallback_candidates {
+                let path = home.join(candidate);
+                if path.exists() {
+                    dirs.push(path);
+                    break;
+                }
+            }
+            
+            // Final fallback - suggest Documents/git even if it doesn't exist
+            if dirs.is_empty() {
+                dirs.push(home.join("Documents/git"));
+            }
         }
     }
 

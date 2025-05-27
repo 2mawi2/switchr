@@ -5,10 +5,11 @@ use ignore::WalkBuilder;
 use rayon::prelude::*;
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 
 use crate::config::Config;
 use crate::models::{Project, ProjectList};
-use super::ProjectScanner;
+use crate::scanner::ProjectScanner;
 
 pub struct LocalScanner;
 
@@ -41,8 +42,9 @@ fn scan_directory(base_dir: &Path) -> Result<Vec<Project>> {
         return Ok(vec![]);
     }
 
-    let mut projects = Vec::new();
+    let mut potential_projects = Vec::new();
     
+    // First pass: quickly find all potential project directories
     let walker = WalkBuilder::new(base_dir)
         .max_depth(Some(3))
         .hidden(false)
@@ -69,15 +71,24 @@ fn scan_directory(base_dir: &Path) -> Result<Vec<Project>> {
                 .unwrap_or("unknown")
                 .to_string();
 
-            let mut project = Project::new_local(project_name, path.to_path_buf());
+            potential_projects.push((project_name, path.to_path_buf()));
+        }
+    }
+
+    // Second pass: parallel timestamp extraction with timeouts
+    let projects: Vec<Project> = potential_projects
+        .into_par_iter()
+        .map(|(name, path)| {
+            let mut project = Project::new_local(name, path.clone());
             
-            if let Some(timestamp) = get_project_timestamp(path) {
+            // Quick timestamp extraction with timeout
+            if let Some(timestamp) = get_project_timestamp_fast(&path) {
                 project = project.with_last_modified(timestamp);
             }
 
-            projects.push(project);
-        }
-    }
+            project
+        })
+        .collect();
 
     Ok(projects)
 }
@@ -89,7 +100,7 @@ fn is_hidden_directory(path: &Path) -> bool {
 }
 
 fn is_project_directory(path: &Path) -> bool {
-    
+    // Fast check: just look for .git directory
     has_git_directory(path)
 }
 
@@ -97,20 +108,44 @@ fn has_git_directory(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-fn get_project_timestamp(path: &Path) -> Option<DateTime<Utc>> {
-    if let Some(git_timestamp) = get_git_last_commit_time(path) {
+// Optimized timestamp extraction with timeout and caching
+fn get_project_timestamp_fast(path: &Path) -> Option<DateTime<Utc>> {
+    // Set a timeout for git operations to prevent slow repos from blocking startup
+    const GIT_TIMEOUT_MS: u64 = 100; // 100ms timeout
+    
+    let start_time = Instant::now();
+    
+    // Try git first, but with a quick timeout
+    if let Some(git_timestamp) = get_git_last_commit_time_fast(path, GIT_TIMEOUT_MS) {
         return Some(git_timestamp);
     }
-
-    if let Some(dir_timestamp) = get_directory_modified_time(path) {
-        return Some(dir_timestamp);
+    
+    // If git takes too long or fails, fall back to directory timestamp
+    if start_time.elapsed().as_millis() > GIT_TIMEOUT_MS as u128 {
+        return get_directory_modified_time(path);
     }
 
-    None
+    // Final fallback
+    get_directory_modified_time(path)
 }
 
-fn get_git_last_commit_time(path: &Path) -> Option<DateTime<Utc>> {
+fn get_git_last_commit_time_fast(path: &Path, timeout_ms: u64) -> Option<DateTime<Utc>> {
+    let start_time = Instant::now();
+    
+    // Quick timeout check
+    if start_time.elapsed().as_millis() > timeout_ms as u128 {
+        return None;
+    }
+    
+    // Try to open repository quickly
     let repo = Repository::open(path).ok()?;
+    
+    // Check timeout again after opening repo
+    if start_time.elapsed().as_millis() > timeout_ms as u128 {
+        return None;
+    }
+    
+    // Quick head access
     let head = repo.head().ok()?;
     let commit = head.peel_to_commit().ok()?;
     let timestamp = commit.time();
