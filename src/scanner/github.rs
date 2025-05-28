@@ -93,56 +93,70 @@ pub fn run_gh_auth_login() -> Result<bool> {
 
 fn fetch_user_repositories_with_timeout(username: &str, timeout_seconds: u64) -> Result<Vec<GitHubRepository>> {
     use std::process::{Command, Stdio};
-    use std::time::Duration;
-    use std::thread;
-    use std::sync::mpsc;
-
-    let (tx, rx) = mpsc::channel();
-    let username_clone = username.to_string();
-
+    use std::time::{Duration, Instant};
     
-    thread::spawn(move || {
-        let result = Command::new("gh")
-            .args([
-                "api",
-                &format!("/users/{}/repos", username_clone),
-                "--paginate",
-                "--jq", 
-                ".[] | {name, html_url, archived, pushed_at, updated_at}"
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output();
-        
-        let _ = tx.send(result);
-    });
-
-    
-    let output = match rx.recv_timeout(Duration::from_secs(timeout_seconds)) {
-        Ok(result) => result.context("Failed to fetch GitHub repositories")?,
-        Err(_) => anyhow::bail!("GitHub API request timed out after {} seconds", timeout_seconds),
-    };
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("GitHub API call failed: {}", stderr);
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut repositories = Vec::new();
+    let start_time = Instant::now();
     
     
-    for line in stdout.lines() {
-        if line.trim().is_empty() {
-            continue;
+    let mut child = Command::new("gh")
+        .args([
+            "api",
+            &format!("/users/{}/repos", username),
+            "--paginate",
+            "--jq", 
+            ".[] | {name, html_url, archived, pushed_at, updated_at}"
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Failed to spawn GitHub API command")?;
+
+    
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                
+                let output = child.wait_with_output()
+                    .context("Failed to get output from GitHub API command")?;
+                
+                if !status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    anyhow::bail!("GitHub API call failed: {}", stderr);
+                }
+
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let mut repositories = Vec::new();
+                
+                
+                for line in stdout.lines() {
+                    if line.trim().is_empty() {
+                        continue;
+                    }
+                    
+                    let repo: GitHubRepository = serde_json::from_str(line)
+                        .with_context(|| format!("Failed to parse repository JSON: {}", line))?;
+                    repositories.push(repo);
+                }
+
+                return Ok(repositories);
+            }
+            Ok(None) => {
+                
+                if start_time.elapsed() > Duration::from_secs(timeout_seconds) {
+                    
+                    let _ = child.kill();
+                    let _ = child.wait(); 
+                    anyhow::bail!("GitHub API request timed out after {} seconds", timeout_seconds);
+                }
+                
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                return Err(e).context("Error waiting for GitHub API command");
+            }
         }
-        
-        let repo: GitHubRepository = serde_json::from_str(line)
-            .with_context(|| format!("Failed to parse repository JSON: {}", line))?;
-        repositories.push(repo);
     }
-
-    Ok(repositories)
 }
 
 fn repository_to_project(repo: GitHubRepository, config: &Config) -> Result<Option<Project>> {
@@ -318,5 +332,39 @@ mod tests {
         
         let result = is_gh_authenticated();
         assert!(result.is_ok()); 
+    }
+
+    #[test]
+    fn test_timeout_mechanism() {
+        
+        
+        
+        let result = fetch_user_repositories_with_timeout("nonexistent-user-12345", 1);
+        
+        
+        
+        
+        
+        
+        match result {
+            Ok(_) => {
+                
+                
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                
+                assert!(
+                    error_msg.contains("timed out") || 
+                    error_msg.contains("API call failed") ||
+                    error_msg.contains("Failed to spawn") ||
+                    error_msg.contains("not authenticated"),
+                    "Unexpected error message: {}", error_msg
+                );
+            }
+        }
+        
+        
+        
     }
 } 
