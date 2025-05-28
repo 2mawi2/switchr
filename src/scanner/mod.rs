@@ -32,18 +32,34 @@ impl ScanManager {
         Self { scanners }
     }
 
-    pub fn scan_all(&self, config: &Config) -> Result<ProjectList> {
+    pub fn scan_all_verbose(&self, config: &Config, verbose: bool) -> Result<ProjectList> {
         let mut all_projects = ProjectList::new();
 
         for scanner in &self.scanners {
+            let scanner_start = std::time::Instant::now();
             match scanner.scan(config) {
                 Ok(projects) => {
+                    let scanner_duration = scanner_start.elapsed();
+                    let project_count = projects.len();
+                    
                     for project in projects.projects() {
                         all_projects.add_project(project.clone());
                     }
+                    
+                    
+                    if verbose && (scanner_duration.as_millis() > 10 || project_count > 0) {
+                        eprintln!("🔍 {} scanner: {} projects in {:.2?}", 
+                                  scanner.scanner_name(), project_count, scanner_duration);
+                    }
                 }
                 Err(e) => {
-                    eprintln!("Warning: {} scanner failed: {}", scanner.scanner_name(), e);
+                    let scanner_duration = scanner_start.elapsed();
+                    if verbose {
+                        eprintln!("Warning: {} scanner failed in {:.2?}: {}", 
+                                  scanner.scanner_name(), scanner_duration, e);
+                    } else {
+                        eprintln!("Warning: {} scanner failed: {}", scanner.scanner_name(), e);
+                    }
                 }
             }
         }
@@ -120,7 +136,7 @@ mod tests {
         ]);
 
         let config = Config::default();
-        let result = manager.scan_all(&config).unwrap();
+        let result = manager.scan_all_verbose(&config, false).unwrap();
 
         assert_eq!(result.len(), 2);
         let project_names: Vec<&str> = result.projects().iter().map(|p| p.name.as_str()).collect();
@@ -142,7 +158,7 @@ mod tests {
         ]);
 
         let config = Config::default();
-        let result = manager.scan_all(&config).unwrap();
+        let result = manager.scan_all_verbose(&config, false).unwrap();
 
         
         assert_eq!(result.len(), 1);

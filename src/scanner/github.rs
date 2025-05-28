@@ -26,32 +26,25 @@ impl ProjectScanner for GitHubScanner {
         let github_username = match &config.github_username {
             Some(username) => username,
             None => {
-                
                 return Ok(project_list);
             }
         };
 
-        
         if !is_gh_installed() {
-            eprintln!("Warning: GitHub CLI (gh) not found. Install with: brew install gh");
             return Ok(project_list);
         }
 
-        
         if !is_gh_authenticated()? {
-            if prompt_for_github_login()? {
-                
-                if !run_gh_auth_login()? {
-                    eprintln!("GitHub authentication failed or cancelled");
-                    return Ok(project_list);
-                }
-            } else {
-                eprintln!("GitHub authentication required but declined. Skipping GitHub repositories.");
-                return Ok(project_list);
-            }
+            return Ok(project_list);
         }
 
-        let repositories = fetch_user_repositories(github_username)?;
+        let repositories = match fetch_user_repositories_with_timeout(github_username, 10) {
+            Ok(repos) => repos,
+            Err(e) => {
+                eprintln!("Warning: GitHub API request timed out or failed: {}", e);
+                return Ok(project_list);
+            }
+        };
         
         for repo in repositories {
             if let Some(project) = repository_to_project(repo, config)? {
@@ -81,19 +74,6 @@ pub fn is_gh_authenticated() -> Result<bool> {
     Ok(output.status.success())
 }
 
-fn prompt_for_github_login() -> Result<bool> {
-    use dialoguer::Confirm;
-    
-    println!("GitHub authentication required to access your repositories.");
-    let should_login = Confirm::new()
-        .with_prompt("Would you like to authenticate with GitHub now?")
-        .default(true)
-        .interact()
-        .context("Failed to get user confirmation for GitHub login")?;
-    
-    Ok(should_login)
-}
-
 pub fn run_gh_auth_login() -> Result<bool> {
     println!("Opening GitHub authentication in your browser...");
     
@@ -111,17 +91,37 @@ pub fn run_gh_auth_login() -> Result<bool> {
     }
 }
 
-fn fetch_user_repositories(username: &str) -> Result<Vec<GitHubRepository>> {
-    let output = Command::new("gh")
-        .args([
-            "api",
-            &format!("/users/{}/repos", username),
-            "--paginate",
-            "--jq", 
-            ".[] | {name, html_url, archived, pushed_at, updated_at}"
-        ])
-        .output()
-        .context("Failed to fetch GitHub repositories")?;
+fn fetch_user_repositories_with_timeout(username: &str, timeout_seconds: u64) -> Result<Vec<GitHubRepository>> {
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+    use std::thread;
+    use std::sync::mpsc;
+
+    let (tx, rx) = mpsc::channel();
+    let username_clone = username.to_string();
+
+    
+    thread::spawn(move || {
+        let result = Command::new("gh")
+            .args([
+                "api",
+                &format!("/users/{}/repos", username_clone),
+                "--paginate",
+                "--jq", 
+                ".[] | {name, html_url, archived, pushed_at, updated_at}"
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output();
+        
+        let _ = tx.send(result);
+    });
+
+    
+    let output = match rx.recv_timeout(Duration::from_secs(timeout_seconds)) {
+        Ok(result) => result.context("Failed to fetch GitHub repositories")?,
+        Err(_) => anyhow::bail!("GitHub API request timed out after {} seconds", timeout_seconds),
+    };
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

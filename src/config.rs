@@ -23,7 +23,7 @@ impl Default for Config {
             editor_command: detect_default_editor(),
             project_dirs: default_project_dirs(),
             github_username: None,
-            cache_ttl_seconds: 300,
+            cache_ttl_seconds: 1800,
         }
     }
 }
@@ -215,7 +215,7 @@ mod tests {
 
         assert!(!config.editor_command.is_empty());
         assert!(!config.project_dirs.is_empty());
-        assert_eq!(config.cache_ttl_seconds, 300);
+        assert_eq!(config.cache_ttl_seconds, 1800);
         assert!(config.github_username.is_none());
     }
 
