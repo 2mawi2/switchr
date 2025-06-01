@@ -11,13 +11,30 @@ on:
         required: false
         default: false
         type: boolean
+  workflow_run:
+    workflows: ["Rust Tests"]
+    types:
+      - completed
+    branches:
+      - 'release'
 
 permissions:
   contents: write
 
 jobs:
+  check-tests:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion != 'success' && github.event_name == 'workflow_run'
+    steps:
+      - name: Tests failed
+        run: |
+          echo "Rust tests workflow failed. Cannot proceed with release."
+          exit 1
+
   build:
     name: Build Release Binaries
+    needs: [check-tests]
+    if: always() && (needs.check-tests.result == 'skipped' || needs.check-tests.result == 'success')
     strategy:
       matrix:
         include:
@@ -55,12 +72,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-      
-      - name: Run Tests
-        run: cargo test --verbose
-      
-      - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
       
       - name: Extract current version
         id: version
