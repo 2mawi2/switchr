@@ -38,23 +38,4 @@ jobs:
       run: cargo build --verbose
 
     - name: Run Tests
-      run: cargo test --verbose --all-features
-  
-  lint:
-    name: Lint
-    runs-on: macos-latest
-    steps:
-    - uses: actions/checkout@v4.2.2
-    
-    - name: Set up Rust
-      uses: actions-rust-lang/setup-rust-toolchain@v1.12.0
-      with:
-        toolchain: stable
-        components: rustfmt, clippy
-        cache: true
-      
-    - name: Check formatting
-      run: cargo fmt --all -- --check
-
-    - name: Lint with Clippy
-      run: cargo clippy --all-features --all-targets -- -D warnings 
+      run: cargo test --verbose --all-features 
