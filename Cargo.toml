@@ -42,7 +42,7 @@ dialoguer = "0.11"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-bincode = "2.0"
+bincode = { version = "2.0", features = ["serde"] }
 
 # System directories
 directories = "6.0"

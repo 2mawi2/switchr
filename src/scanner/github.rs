@@ -467,8 +467,8 @@ mod tests {
 
     #[test]
     fn test_is_gh_installed() {
-        let installed = is_gh_installed();
-        assert!(installed || !installed);
+        let _installed = is_gh_installed();
+        // This test just verifies the function can be called without panicking
     }
 
     #[test]
@@ -491,8 +491,8 @@ mod tests {
 
     #[test]
     fn test_is_gh_installed_function() {
-        let result = is_gh_installed();
-        assert!(result == true || result == false);
+        let _result = is_gh_installed();
+        // This test just verifies the function can be called without panicking
     }
 
     #[test]

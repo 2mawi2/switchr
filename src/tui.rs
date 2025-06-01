@@ -568,7 +568,7 @@ mod tests {
         app.input = "app".to_string();
         app.update_filtered_projects();
 
-        assert!(app.filtered_projects.len() >= 1);
+        assert!(!app.filtered_projects.is_empty());
 
         assert!(app.filtered_projects.iter().any(|(i, _)| *i == 1));
     }

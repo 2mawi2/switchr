@@ -757,7 +757,7 @@ mod tests {
 
     #[test]
     fn test_cli_basic_parsing() {
-        let cli = Cli::try_parse_from(&["sw"]).unwrap();
+        let cli = Cli::try_parse_from(["sw"]).unwrap();
 
         assert!(cli.project_name.is_none());
         assert!(!cli.interactive);
@@ -770,7 +770,7 @@ mod tests {
 
     #[test]
     fn test_cli_project_name() {
-        let cli = Cli::try_parse_from(&["sw", "my-project"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "my-project"]).unwrap();
 
         assert_eq!(cli.project_name, Some("my-project".to_string()));
         assert_eq!(
@@ -781,7 +781,7 @@ mod tests {
 
     #[test]
     fn test_cli_flags() {
-        let cli = Cli::try_parse_from(&["sw", "--list", "--verbose"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "--list", "--verbose"]).unwrap();
 
         assert!(cli.list);
         assert!(cli.verbose);
@@ -790,7 +790,7 @@ mod tests {
 
     #[test]
     fn test_cli_interactive_flag() {
-        let cli = Cli::try_parse_from(&["sw", "--interactive"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "--interactive"]).unwrap();
 
         assert!(cli.interactive);
         assert_eq!(cli.operation_mode(), OperationMode::Interactive);
@@ -798,7 +798,7 @@ mod tests {
 
     #[test]
     fn test_cli_fzf_flag() {
-        let cli = Cli::try_parse_from(&["sw", "--fzf"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "--fzf"]).unwrap();
 
         assert!(cli.fzf);
         assert_eq!(cli.operation_mode(), OperationMode::Fzf);
@@ -806,51 +806,51 @@ mod tests {
 
     #[test]
     fn test_cli_subcommands() {
-        let cli = Cli::try_parse_from(&["sw", "setup"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "setup"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::Setup)));
         assert_eq!(cli.operation_mode(), OperationMode::Setup);
 
-        let cli = Cli::try_parse_from(&["sw", "list"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "list"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::List)));
         assert_eq!(cli.operation_mode(), OperationMode::List);
 
-        let cli = Cli::try_parse_from(&["sw", "refresh"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "refresh"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::Refresh)));
         assert_eq!(cli.operation_mode(), OperationMode::Refresh);
 
-        let cli = Cli::try_parse_from(&["sw", "config"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "config"]).unwrap();
         assert!(matches!(cli.command, Some(Commands::Config)));
         assert_eq!(cli.operation_mode(), OperationMode::ShowConfig);
     }
 
     #[test]
     fn test_cli_conflicting_flags() {
-        assert!(Cli::try_parse_from(&["sw", "--list", "--interactive"]).is_err());
-        assert!(Cli::try_parse_from(&["sw", "--list", "--fzf"]).is_err());
-        assert!(Cli::try_parse_from(&["sw", "--interactive", "--fzf"]).is_err());
+        assert!(Cli::try_parse_from(["sw", "--list", "--interactive"]).is_err());
+        assert!(Cli::try_parse_from(["sw", "--list", "--fzf"]).is_err());
+        assert!(Cli::try_parse_from(["sw", "--interactive", "--fzf"]).is_err());
     }
 
     #[test]
     fn test_operation_mode_defaults() {
-        let cli = Cli::try_parse_from(&["sw"]).unwrap();
+        let cli = Cli::try_parse_from(["sw"]).unwrap();
         assert_eq!(cli.operation_mode(), OperationMode::Interactive);
     }
 
     #[test]
     fn test_operation_mode_precedence() {
-        let cli = Cli::try_parse_from(&["sw", "project-name"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "project-name"]).unwrap();
         assert_eq!(
             cli.operation_mode(),
             OperationMode::Direct("project-name".to_string())
         );
 
-        let cli = Cli::try_parse_from(&["sw", "setup"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "setup"]).unwrap();
         assert_eq!(cli.operation_mode(), OperationMode::Setup);
     }
 
     #[test]
     fn test_cli_completions_subcommand() {
-        let cli = Cli::try_parse_from(&["sw", "completions", "bash"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "completions", "bash"]).unwrap();
         assert!(matches!(
             cli.command,
             Some(Commands::Completions { shell: Shell::Bash })
@@ -860,14 +860,14 @@ mod tests {
             OperationMode::Completions(Shell::Bash)
         );
 
-        let cli = Cli::try_parse_from(&["sw", "completions", "zsh"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "completions", "zsh"]).unwrap();
         assert!(matches!(
             cli.command,
             Some(Commands::Completions { shell: Shell::Zsh })
         ));
         assert_eq!(cli.operation_mode(), OperationMode::Completions(Shell::Zsh));
 
-        let cli = Cli::try_parse_from(&["sw", "completions", "fish"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "completions", "fish"]).unwrap();
         assert!(matches!(
             cli.command,
             Some(Commands::Completions { shell: Shell::Fish })
@@ -877,7 +877,7 @@ mod tests {
             OperationMode::Completions(Shell::Fish)
         );
 
-        let cli = Cli::try_parse_from(&["sw", "completions", "powershell"]).unwrap();
+        let cli = Cli::try_parse_from(["sw", "completions", "powershell"]).unwrap();
         assert!(matches!(
             cli.command,
             Some(Commands::Completions {

@@ -70,8 +70,9 @@ impl Cache {
         let data = fs::read(&cache_path)
             .with_context(|| format!("Failed to read cache file: {}", cache_path.display()))?;
 
-        let projects: Vec<Project> = bincode::deserialize(&data)
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize cache: {}", e))?;
+        let projects: Vec<Project> = bincode::serde::decode_from_slice(&data, bincode::config::standard())
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize cache: {}", e))?
+            .0;
 
         Ok(Some(ProjectList::from_projects(projects)))
     }
@@ -135,7 +136,7 @@ impl Cache {
     pub fn save_projects(&self, projects: &ProjectList) -> Result<()> {
         let cache_path = self.projects_cache_path();
 
-        let data = bincode::serialize(projects.projects())
+        let data = bincode::serde::encode_to_vec(projects.projects(), bincode::config::standard())
             .map_err(|e| anyhow::anyhow!("Failed to serialize cache: {}", e))?;
 
         let mut last_error = None;
@@ -170,8 +171,9 @@ impl Cache {
         let data = fs::read(&cache_path)
             .with_context(|| format!("Failed to read GitHub cache: {}", cache_path.display()))?;
 
-        let projects: Vec<Project> = bincode::deserialize(&data)
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize GitHub cache: {}", e))?;
+        let projects: Vec<Project> = bincode::serde::decode_from_slice(&data, bincode::config::standard())
+            .map_err(|e| anyhow::anyhow!("Failed to deserialize GitHub cache: {}", e))?
+            .0;
 
         Ok(Some(ProjectList::from_projects(projects)))
     }
@@ -180,7 +182,7 @@ impl Cache {
     pub fn save_github_projects(&self, projects: &ProjectList) -> Result<()> {
         let cache_path = self.github_cache_path();
 
-        let data = bincode::serialize(projects.projects())
+        let data = bincode::serde::encode_to_vec(projects.projects(), bincode::config::standard())
             .map_err(|e| anyhow::anyhow!("Failed to serialize GitHub cache: {}", e))?;
 
         let mut last_error = None;
