@@ -2,6 +2,18 @@
 
 A fast project switcher for developers
 
+## Installation
+
+### Homebrew (Recommended)
+
+```bash
+# Add the tap
+brew tap 2mawi2/homebrew-tap
+
+# Install sw
+brew install sw
+```
+
 ## Quick Start
 This is a Rust project switcher tool. Use [justfile](mdc:justfile) for common development tasks:
 
@@ -10,14 +22,6 @@ just build    # Build the project
 just test     # Run all tests
 just run      # Build and run with default args
 just dev      # Development mode with cargo watch
-```
-
-## Installation
-
-### From source
-
-```bash
-cargo install --path .
 ```
 
 ## Development

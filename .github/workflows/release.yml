@@ -188,7 +188,7 @@ jobs:
   increment-version:
     needs: [build, create-release, update-homebrew]
     runs-on: ubuntu-latest
-    if: always() && needs.build.result == 'success' && needs.create-release.result == 'success' && needs.update-homebrew.result == 'success' && (github.ref == 'refs/heads/release' || github.event.inputs.force_release == 'true')
+    if: always() && needs.build.result == 'success' && needs.create-release.result == 'success' && needs.update-homebrew.result == 'success' && (github.ref == 'refs/heads/release' || github.event_name == 'workflow_run' || github.event.inputs.force_release == 'true')
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
