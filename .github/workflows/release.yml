@@ -44,15 +44,6 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             name: sw-macos-aarch64
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            name: sw-linux-x86_64
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            name: sw-linux-aarch64
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
-            name: sw-windows-x86_64.exe
     runs-on: ${{ matrix.os }}
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -89,23 +80,13 @@ jobs:
           cargo build --release --target ${{ matrix.target }}
           
           # Copy binary to artifacts with target-specific name
-          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            cp target/${{ matrix.target }}/release/sw.exe artifacts/${{ matrix.name }}
-          else
-            cp target/${{ matrix.target }}/release/sw artifacts/${{ matrix.name }}
-          fi
+          cp target/${{ matrix.target }}/release/sw artifacts/${{ matrix.name }}
 
       - name: Create checksums
         shell: bash
         run: |
           cd artifacts
-          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
-            shasum -a 256 * > checksums-${{ matrix.target }}.txt
-          elif [[ "${{ matrix.os }}" == "windows-latest" ]]; then
-            certutil -hashfile ${{ matrix.name }} SHA256 | findstr -v "hash" | findstr -v "SHA256" > checksums-${{ matrix.target }}.txt
-          else
-            sha256sum * > checksums-${{ matrix.target }}.txt
-          fi
+          shasum -a 256 * > checksums-${{ matrix.target }}.txt
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
