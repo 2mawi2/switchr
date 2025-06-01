@@ -31,9 +31,29 @@ jobs:
           echo "Rust tests workflow failed. Cannot proceed with release."
           exit 1
 
+  extract-version:
+    name: Extract Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Extract current version
+        id: version
+        shell: bash
+        run: |
+          # Extract current version from Cargo.toml
+          CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
   build:
     name: Build Release Binaries
-    needs: [check-tests]
+    needs: [check-tests, extract-version]
     if: always() && (needs.check-tests.result == 'skipped' || needs.check-tests.result == 'success')
     strategy:
       matrix:
@@ -45,9 +65,6 @@ jobs:
             os: macos-latest
             name: sw-macos-aarch64
     runs-on: ${{ matrix.os }}
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -64,16 +81,6 @@ jobs:
         with:
           key: ${{ matrix.target }}
       
-      - name: Extract current version
-        id: version
-        shell: bash
-        run: |
-          # Extract current version from Cargo.toml
-          CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
-          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v$CURRENT_VERSION" >> $GITHUB_OUTPUT
-          echo "Current version: $CURRENT_VERSION"
-
       - name: Build binary
         run: |
           mkdir -p artifacts
@@ -95,7 +102,7 @@ jobs:
           path: artifacts/*
 
   create-release:
-    needs: build
+    needs: [extract-version, build]
     runs-on: ubuntu-latest
     if: always() && needs.build.result == 'success'
     steps:
@@ -121,8 +128,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.build.outputs.tag }}
-          name: Release ${{ needs.build.outputs.tag }}
+          tag_name: ${{ needs.extract-version.outputs.tag }}
+          name: Release ${{ needs.extract-version.outputs.tag }}
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -132,7 +139,7 @@ jobs:
             README.md
 
   update-homebrew:
-    needs: [build, create-release]
+    needs: [extract-version, build, create-release]
     runs-on: ubuntu-latest
     if: always() && needs.build.result == 'success' && needs.create-release.result == 'success'
     steps:
@@ -145,7 +152,7 @@ jobs:
           
       - name: Download release tarball and calculate SHA
         run: |
-          curl -L https://github.com/2mawi2/switchr/archive/refs/tags/${{ needs.build.outputs.tag }}.tar.gz -o switchr.tar.gz
+          curl -L https://github.com/2mawi2/switchr/archive/refs/tags/${{ needs.extract-version.outputs.tag }}.tar.gz -o switchr.tar.gz
           SHA256=$(sha256sum switchr.tar.gz | awk '{print $1}')
           echo "SHA256=$SHA256" >> $GITHUB_ENV
           
@@ -155,7 +162,7 @@ jobs:
           class Sw < Formula
             desc "A fast project switcher for developers"
             homepage "https://github.com/2mawi2/switchr"
-            url "https://github.com/2mawi2/switchr/archive/refs/tags/${{ needs.build.outputs.tag }}.tar.gz"
+            url "https://github.com/2mawi2/switchr/archive/refs/tags/${{ needs.extract-version.outputs.tag }}.tar.gz"
             sha256 "${SHA256}"
             license "MIT"
           
@@ -181,12 +188,12 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to Homebrew formula, already up-to-date."
           else
-            git commit -m "Update sw to ${{ needs.build.outputs.version }}"
+            git commit -m "Update sw to ${{ needs.extract-version.outputs.version }}"
             git push
           fi
 
   increment-version:
-    needs: [build, create-release, update-homebrew]
+    needs: [extract-version, build, create-release, update-homebrew]
     runs-on: ubuntu-latest
     if: always() && needs.build.result == 'success' && needs.create-release.result == 'success' && needs.update-homebrew.result == 'success' && (github.ref == 'refs/heads/release' || github.event_name == 'workflow_run' || github.event.inputs.force_release == 'true')
     steps:
@@ -203,8 +210,9 @@ jobs:
       
       - name: Increment Version on release branch
         run: |
-          # Get current version from the output
-          CURRENT_VERSION=${{ needs.build.outputs.version }}
+          # Get the current version from Cargo.toml (fresh read, not from build output)
+          CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version in Cargo.toml: $CURRENT_VERSION"
           
           # Parse the version
           IFS='.' read -ra VER_PARTS <<< "$CURRENT_VERSION"
@@ -212,21 +220,39 @@ jobs:
           MINOR=${VER_PARTS[1]}
           PATCH=$((${VER_PARTS[2]}+1))
           
-          # Create new version
+          # Create new version for next release cycle
           NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          echo "New version: $NEW_VERSION"
+          echo "Next version: $NEW_VERSION"
           
-          # Update Cargo.toml with new version
-          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+          # Check if we need to increment (avoid incrementing if already incremented)
+          RELEASED_VERSION=${{ needs.extract-version.outputs.version }}
+          echo "Released version: $RELEASED_VERSION"
           
-          # Stage and commit the updated file on release branch
-          git add Cargo.toml
-          git commit -m "Bump version to $NEW_VERSION"
-          git push origin release
+          if [ "$CURRENT_VERSION" = "$RELEASED_VERSION" ]; then
+            # Update Cargo.toml with new version for next release
+            sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+            
+            # Verify the change was made
+            if git diff --quiet Cargo.toml; then
+              echo "ERROR: sed command failed to update version"
+              exit 1
+            else
+              # Stage and commit the updated file on release branch
+              git add Cargo.toml
+              git commit -m "Bump version to $NEW_VERSION for next release"
+              git push origin release
+              echo "Version successfully incremented to $NEW_VERSION"
+              echo "SKIP_MERGE=false" >> $GITHUB_ENV
+            fi
+          else
+            echo "Version already incremented (current: $CURRENT_VERSION, released: $RELEASED_VERSION)"
+            echo "SKIP_MERGE=true" >> $GITHUB_ENV
+          fi
       
       - name: Merge release to main
+        if: env.SKIP_MERGE != 'true'
         run: |
-          git fetch origin main:main
+          git fetch origin main
           git checkout main
           git merge --no-ff -m "Merge release branch with version bump" release
           git push origin main
