@@ -96,12 +96,45 @@ pub enum OperationMode {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let config = Config::load()?;
+
+    // Check if this is the first time running and GitHub is not configured
+    let is_first_time = Config::is_first_time_run().unwrap_or(false);
+    let should_setup_github = config.should_prompt_github_setup();
+    
+    // Only prompt for GitHub setup on first run if we're not in a non-interactive mode
+    if is_first_time && should_setup_github {
+        match cli.operation_mode() {
+            OperationMode::Interactive | OperationMode::Fzf => {
+                // Interactive modes - safe to prompt
+                if let Ok(Some(github_username)) = scanner::github::prompt_github_setup() {
+                    // Save the updated config with GitHub username
+                    let updated_config = Config {
+                        github_username: Some(github_username),
+                        ..config.clone()
+                    };
+                    if let Err(e) = updated_config.save() {
+                        eprintln!("Warning: Failed to save GitHub configuration: {}", e);
+                    }
+                    println!(); // Add some spacing
+                }
+            }
+            OperationMode::List | OperationMode::ShowConfig => {
+                // Non-interactive modes - just show a helpful message
+                if cli.verbose {
+                    println!("💡 Tip: Run 'sw setup' to configure GitHub integration for repository discovery");
+                }
+            }
+            _ => {
+                // Other modes (Setup, Direct, etc.) - don't interfere
+            }
+        }
+    }
 
     if cli.verbose {
         println!("Running sw with verbose output enabled");
     }
 
-    let config = Config::load()?;
     config.validate()?;
 
     if cli.verbose {
@@ -122,11 +155,10 @@ fn main() -> Result<()> {
             }
             println!("  Cache TTL: {} seconds", config.cache_ttl_seconds);
 
-
             if let Some(ref username) = config.github_username {
                 println!("  GitHub username: {}", username);
 
-
+                // Check authentication status
                 if scanner::github::is_gh_installed() {
                     match scanner::github::is_gh_authenticated() {
                         Ok(true) => println!("  GitHub status: ✅ Authenticated"),
@@ -137,8 +169,22 @@ fn main() -> Result<()> {
                     println!("  GitHub status: ⚠️  GitHub CLI not installed");
                 }
             } else {
-                println!("  GitHub: ❌ Not configured");
-                if !scanner::github::is_gh_installed() {
+                // No GitHub username configured, but let's check if they're authenticated anyway
+                if scanner::github::is_gh_installed() {
+                    match scanner::github::is_gh_authenticated() {
+                        Ok(true) => {
+                            println!("  GitHub: ⚠️  Authenticated but not configured");
+                            println!("    💡 Run 'sw setup' to enable GitHub integration");
+                        }
+                        Ok(false) => {
+                            println!("  GitHub: ❌ Not configured");
+                        }
+                        Err(e) => {
+                            println!("  GitHub: ❌ Not configured (error checking auth: {})", e);
+                        }
+                    }
+                } else {
+                    println!("  GitHub: ❌ Not configured");
                     println!("  GitHub CLI: ❌ Not installed");
                 }
             }
@@ -577,7 +623,7 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         println!("✅ GitHub CLI is authenticated");
 
 
-        let current_username = get_gh_username().unwrap_or_else(|_|
+        let current_username = scanner::github::get_gh_username().unwrap_or_else(|_|
             config.github_username.as_deref().unwrap_or("").to_string()
         );
 
@@ -623,7 +669,7 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
                 println!("✅ GitHub authentication successful!");
 
 
-                match get_gh_username() {
+                match scanner::github::get_gh_username() {
                     Ok(username) => {
                         println!("📝 Authenticated as: {}", username);
                         Some(username)
@@ -700,30 +746,6 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
     println!("Try running 'sw --list' to see your projects.");
 
     Ok(())
-}
-
-fn get_gh_username() -> Result<String> {
-    use std::process::Command;
-
-    let output = Command::new("gh")
-        .args(["api", "user", "--jq", ".login"])
-        .output()
-        .context("Failed to get GitHub username from gh CLI")?;
-
-    if !output.status.success() {
-        anyhow::bail!("Failed to get GitHub username: {}", String::from_utf8_lossy(&output.stderr));
-    }
-
-    let username = String::from_utf8(output.stdout)
-        .context("Failed to parse GitHub username")?
-        .trim()
-        .to_string();
-
-    if username.is_empty() {
-        anyhow::bail!("Empty username returned from GitHub API");
-    }
-
-    Ok(username)
 }
 
 fn generate_completions(shell: Shell) -> Result<()> {

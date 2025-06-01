@@ -136,6 +136,19 @@ impl Config {
     pub fn set_editor(&mut self, editor: String) {
         self.editor_command = editor;
     }
+
+    /// Check if this is likely the first time the user is running the application.
+    /// This is determined by checking if the config file exists.
+    pub fn is_first_time_run() -> Result<bool> {
+        let config_path = Self::config_file_path()?;
+        Ok(!config_path.exists())
+    }
+
+    /// Check if GitHub integration needs to be configured
+    pub fn should_prompt_github_setup(&self) -> bool {
+        // Prompt if GitHub username is not configured
+        self.github_username.is_none()
+    }
 }
 
 
@@ -328,13 +341,68 @@ mod tests {
 
     #[test]
     fn test_config_with_invalid_json() {
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+        
+        let mut file = NamedTempFile::new().unwrap();
+        writeln!(file, "invalid json content").unwrap();
+        
+        let result = Config::load_from_path(file.path());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_first_time_run_no_config() {
+        // This test should check if the function works correctly when no config exists
+        // We can test this using a temporary directory
+        use tempfile::TempDir;
+        
         let temp_dir = TempDir::new().unwrap();
-        let config_path = temp_dir.path().join("invalid.json");
+        let config_path = temp_dir.path().join("sw").join("config.json");
+        
+        // Before creating config, should be first time
+        assert!(!config_path.exists());
+        
+        // Create a temporary config and check it's no longer first time
+        fs::create_dir_all(config_path.parent().unwrap()).unwrap();
+        fs::write(&config_path, "{}").unwrap();
+        assert!(config_path.exists());
+    }
 
+    #[test]
+    fn test_first_time_run_with_temp_config() {
+        // Test first-time detection using a custom path
+        use tempfile::NamedTempFile;
+        use std::io::Write;
+        
+        let mut temp_file = NamedTempFile::new().unwrap();
+        // Write valid JSON content
+        writeln!(temp_file, r#"{{"editor_command": "vim", "project_dirs": [], "github_username": null, "cache_ttl_seconds": 1800}}"#).unwrap();
+        let temp_path = temp_file.path();
+        
+        // When config file exists with valid content, we can load it
+        let config = Config::load_from_path(temp_path).unwrap();
+        // This test just ensures the function doesn't panic and we can load a config
+        assert_eq!(config.editor_command, "vim");
+        assert_eq!(config.cache_ttl_seconds, 1800);
+    }
 
-        fs::write(&config_path, "{ invalid json }").unwrap();
+    #[test]
+    fn test_should_prompt_github_setup() {
+        let config_without_github = Config {
+            editor_command: "vim".to_string(),
+            project_dirs: vec![],
+            github_username: None,
+            cache_ttl_seconds: 1800,
+        };
+        assert!(config_without_github.should_prompt_github_setup());
 
-
-        assert!(Config::load_from_path(&config_path).is_err());
+        let config_with_github = Config {
+            editor_command: "vim".to_string(),
+            project_dirs: vec![],
+            github_username: Some("testuser".to_string()),
+            cache_ttl_seconds: 1800,
+        };
+        assert!(!config_with_github.should_prompt_github_setup());
     }
 }

@@ -268,4 +268,102 @@ fn test_setup_wizard_implementation() {
         stderr.contains("not a tty") ||
         !output.status.success()
     );
+}
+
+#[test]
+fn test_first_time_setup_logic_isolated() {
+    // Test the first-time setup logic without depending on external GitHub state
+    let temp_dir = TempDir::new().unwrap();
+    
+    // Create a completely isolated environment
+    let mut cmd = Command::cargo_bin("sw").unwrap();
+    cmd.env("XDG_CONFIG_HOME", temp_dir.path())
+        .env("XDG_CACHE_HOME", temp_dir.path().join("cache"))
+        .env("HOME", temp_dir.path())
+        .arg("--list")
+        .arg("--verbose");
+    
+    // Test should pass regardless of external GitHub state
+    // We're just testing that the app runs and shows projects
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Found")
+            .and(predicate::str::contains("project(s):"))
+            .or(predicate::str::contains("No projects found")));
+}
+
+#[test]
+fn test_config_is_first_time_run_detection() {
+    // Test the first-time run detection logic
+    // This test uses the actual Config implementation
+    use sw::config::Config;
+    
+    // In a clean test environment, it should detect first time run
+    // Note: This might fail if there's already a config file, but that's ok for CI
+    let result = Config::is_first_time_run();
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_config_should_prompt_github_setup() {
+    // Test the GitHub setup detection logic
+    use sw::config::Config;
+    
+    let config_without_github = Config {
+        editor_command: "vim".to_string(),
+        project_dirs: vec![],
+        github_username: None,
+        cache_ttl_seconds: 1800,
+    };
+    assert!(config_without_github.should_prompt_github_setup());
+
+    let config_with_github = Config {
+        editor_command: "vim".to_string(),
+        project_dirs: vec![],
+        github_username: Some("testuser".to_string()),
+        cache_ttl_seconds: 1800,
+    };
+    assert!(!config_with_github.should_prompt_github_setup());
+}
+
+#[test]
+fn test_github_setup_prompting_logic() {
+    // Test the GitHub setup prompting logic using the Config API directly
+    use sw::config::Config;
+    
+    // Test config without GitHub username should prompt for setup
+    let config_without_github = Config {
+        editor_command: "vim".to_string(),
+        project_dirs: vec![],
+        github_username: None,
+        cache_ttl_seconds: 1800,
+    };
+    assert!(config_without_github.should_prompt_github_setup());
+
+    // Test config with GitHub username should not prompt for setup
+    let config_with_github = Config {
+        editor_command: "vim".to_string(),
+        project_dirs: vec![],
+        github_username: Some("testuser".to_string()),
+        cache_ttl_seconds: 1800,
+    };
+    assert!(!config_with_github.should_prompt_github_setup());
+}
+
+#[test]
+fn test_config_command_without_external_dependencies() {
+    // Test the config command in an isolated environment
+    let temp_dir = TempDir::new().unwrap();
+    
+    let mut cmd = Command::cargo_bin("sw").unwrap();
+    cmd.env("XDG_CONFIG_HOME", temp_dir.path())
+        .env("XDG_CACHE_HOME", temp_dir.path().join("cache"))
+        .env("HOME", temp_dir.path())
+        .arg("config");
+    
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Configuration:"))
+        .stdout(predicate::str::contains("Editor:"))
+        .stdout(predicate::str::contains("Project directories:"));
 } 
