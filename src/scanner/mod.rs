@@ -1,16 +1,16 @@
-use anyhow::Result;
-use crate::models::ProjectList;
 use crate::config::Config;
+use crate::models::ProjectList;
+use anyhow::Result;
 use std::sync::Arc;
 use std::thread;
 
-pub mod local;
 pub mod cursor;
 pub mod github;
+pub mod local;
 
 pub trait ProjectScanner: Send + Sync {
     fn scan(&self, config: &Config) -> Result<ProjectList>;
-    
+
     fn scanner_name(&self) -> &'static str;
 }
 
@@ -38,72 +38,76 @@ impl ScanManager {
         let config = Arc::new(config.clone());
         let mut handles = Vec::new();
 
-        
-        let scanner_info: Vec<(String, String)> = self.scanners
+        let scanner_info: Vec<(String, String)> = self
+            .scanners
             .iter()
-            .map(|scanner| (scanner.scanner_name().to_string(), scanner.scanner_name().to_string()))
+            .map(|scanner| {
+                (
+                    scanner.scanner_name().to_string(),
+                    scanner.scanner_name().to_string(),
+                )
+            })
             .collect();
 
         for (scanner_name, _) in scanner_info {
             let config_clone = Arc::clone(&config);
             let scanner_name_clone = scanner_name.clone();
-            
+
             let handle = thread::spawn(move || {
                 let start_time = std::time::Instant::now();
-                
-                
+
                 let result = match scanner_name_clone.as_str() {
-                    "local" => local::LocalScanner.scan(&*config_clone),
-                    "cursor" => cursor::CursorScanner.scan(&*config_clone),
-                    "github" => github::GitHubScanner.scan(&*config_clone),
-                    _ => {
-                        
-                        
-                        Ok(ProjectList::new())
-                    }
+                    "local" => local::LocalScanner.scan(&config_clone),
+                    "cursor" => cursor::CursorScanner.scan(&config_clone),
+                    "github" => github::GitHubScanner.scan(&config_clone),
+                    _ => Ok(ProjectList::new()),
                 };
-                
+
                 let duration = start_time.elapsed();
                 (scanner_name_clone, result, duration)
             });
-            
+
             handles.push(handle);
         }
 
-        
-        if self.scanners.iter().any(|s| !matches!(s.scanner_name(), "local" | "cursor" | "github")) {
+        if self
+            .scanners
+            .iter()
+            .any(|s| !matches!(s.scanner_name(), "local" | "cursor" | "github"))
+        {
             return self.scan_all_sequential(&config, verbose);
         }
 
-        
         let mut all_projects = ProjectList::new();
-        
+
         for handle in handles {
             match handle.join() {
-                Ok((scanner_name, result, duration)) => {
-                    match result {
-                        Ok(projects) => {
-                            let project_count = projects.len();
-                            
-                            for project in projects.projects() {
-                                all_projects.add_project(project.clone());
-                            }
-                            
-                            if verbose && (duration.as_millis() > 10 || project_count > 0) {
-                                eprintln!("🔍 {} scanner: {} projects in {:.2?}", 
-                                          scanner_name, project_count, duration);
-                            }
+                Ok((scanner_name, result, duration)) => match result {
+                    Ok(projects) => {
+                        let project_count = projects.len();
+
+                        for project in projects.projects() {
+                            all_projects.add_project(project.clone());
                         }
-                        Err(e) => {
-                            if verbose {
-                                eprintln!("Warning: {} scanner failed in {:.2?}: {}", 
-                                          scanner_name, duration, e);
-                            } else {
-                                eprintln!("Warning: {} scanner failed: {}", scanner_name, e);
-                            }
+
+                        if verbose && (duration.as_millis() > 10 || project_count > 0) {
+                            eprintln!(
+                                "🔍 {} scanner: {} projects in {:.2?}",
+                                scanner_name, project_count, duration
+                            );
                         }
                     }
-                }
+                    Err(e) => {
+                        if verbose {
+                            eprintln!(
+                                "Warning: {} scanner failed in {:.2?}: {}",
+                                scanner_name, duration, e
+                            );
+                        } else {
+                            eprintln!("Warning: {} scanner failed: {}", scanner_name, e);
+                        }
+                    }
+                },
                 Err(_) => {
                     eprintln!("Warning: Scanner thread panicked");
                 }
@@ -115,7 +119,6 @@ impl ScanManager {
         Ok(all_projects)
     }
 
-    
     fn scan_all_sequential(&self, config: &Config, verbose: bool) -> Result<ProjectList> {
         let mut all_projects = ProjectList::new();
 
@@ -125,21 +128,29 @@ impl ScanManager {
                 Ok(projects) => {
                     let scanner_duration = scanner_start.elapsed();
                     let project_count = projects.len();
-                    
+
                     for project in projects.projects() {
                         all_projects.add_project(project.clone());
                     }
-                    
+
                     if verbose && (scanner_duration.as_millis() > 10 || project_count > 0) {
-                        eprintln!("🔍 {} scanner: {} projects in {:.2?}", 
-                                  scanner.scanner_name(), project_count, scanner_duration);
+                        eprintln!(
+                            "🔍 {} scanner: {} projects in {:.2?}",
+                            scanner.scanner_name(),
+                            project_count,
+                            scanner_duration
+                        );
                     }
                 }
                 Err(e) => {
                     let scanner_duration = scanner_start.elapsed();
                     if verbose {
-                        eprintln!("Warning: {} scanner failed in {:.2?}: {}", 
-                                  scanner.scanner_name(), scanner_duration, e);
+                        eprintln!(
+                            "Warning: {} scanner failed in {:.2?}: {}",
+                            scanner.scanner_name(),
+                            scanner_duration,
+                            e
+                        );
                     } else {
                         eprintln!("Warning: {} scanner failed: {}", scanner.scanner_name(), e);
                     }
@@ -245,8 +256,7 @@ mod tests {
         let config = Config::default();
         let result = manager.scan_all_verbose(&config, false).unwrap();
 
-        
         assert_eq!(result.len(), 1);
         assert_eq!(result.projects()[0].name, "project1");
     }
-} 
+}

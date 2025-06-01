@@ -1,0 +1,4 @@
+--container-architecture linux/amd64
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+-P ubuntu-latest-4-cores=catthehacker/ubuntu:act-latest
+-P ubuntu-latest-8-cores=catthehacker/ubuntu:act-latest 

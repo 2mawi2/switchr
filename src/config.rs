@@ -4,10 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
-
     pub editor_command: String,
 
     pub project_dirs: Vec<PathBuf>,
@@ -29,18 +27,15 @@ impl Default for Config {
 }
 
 impl Config {
-
     pub fn load() -> Result<Self> {
         let config_path = Self::config_file_path()?;
         Self::load_from_path(&config_path)
     }
 
-
     pub fn load_from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
 
         if !path.exists() {
-
             return Ok(Self::default());
         }
 
@@ -53,24 +48,21 @@ impl Config {
         Ok(config)
     }
 
-
     pub fn save(&self) -> Result<()> {
         let config_path = Self::config_file_path()?;
         self.save_to_path(&config_path)
     }
 
-
     pub fn save_to_path<P: AsRef<Path>>(&self, path: P) -> Result<()> {
         let path = path.as_ref();
 
-
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create config directory: {}", parent.display()))?;
+            fs::create_dir_all(parent).with_context(|| {
+                format!("Failed to create config directory: {}", parent.display())
+            })?;
         }
 
-        let content = serde_json::to_string_pretty(self)
-            .context("Failed to serialize config")?;
+        let content = serde_json::to_string_pretty(self).context("Failed to serialize config")?;
 
         fs::write(path, content)
             .with_context(|| format!("Failed to write config file: {}", path.display()))?;
@@ -78,22 +70,19 @@ impl Config {
         Ok(())
     }
 
-
     pub fn config_file_path() -> Result<PathBuf> {
-        let project_dirs = ProjectDirs::from("", "", "sw")
-            .context("Failed to determine config directory")?;
+        let project_dirs =
+            ProjectDirs::from("", "", "sw").context("Failed to determine config directory")?;
 
         Ok(project_dirs.config_dir().join("config.json"))
     }
 
-
     pub fn cache_dir_path() -> Result<PathBuf> {
-        let project_dirs = ProjectDirs::from("", "", "sw")
-            .context("Failed to determine cache directory")?;
+        let project_dirs =
+            ProjectDirs::from("", "", "sw").context("Failed to determine cache directory")?;
 
         Ok(project_dirs.cache_dir().to_path_buf())
     }
-
 
     pub fn validate(&self) -> Result<()> {
         if self.editor_command.trim().is_empty() {
@@ -102,7 +91,10 @@ impl Config {
 
         for dir in &self.project_dirs {
             if !dir.exists() {
-                eprintln!("Warning: Project directory does not exist: {}", dir.display());
+                eprintln!(
+                    "Warning: Project directory does not exist: {}",
+                    dir.display()
+                );
             }
         }
 
@@ -150,9 +142,7 @@ impl Config {
     }
 }
 
-
 fn detect_default_editor() -> String {
-
     if let Ok(editor) = std::env::var("EDITOR") {
         return editor;
     }
@@ -161,7 +151,6 @@ fn detect_default_editor() -> String {
         return visual;
     }
 
-
     let editors = ["cursor", "code", "vim", "nvim", "nano"];
     for editor in &editors {
         if which::which(editor).is_ok() {
@@ -169,21 +158,19 @@ fn detect_default_editor() -> String {
         }
     }
 
-
     "vim".to_string()
 }
-
 
 fn default_project_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
 
     if let Some(home) = dirs::home_dir() {
         let candidates = [
-            "Code",           // VS Code default
-            "Projects",       // Common name
-            "Documents/git",  // Git convention
-            "src",           // Development convention
-            "workspace",     // IDE convention
+            "Code",               // VS Code default
+            "Projects",           // Common name
+            "Documents/git",      // Git convention
+            "src",                // Development convention
+            "workspace",          // IDE convention
             "Documents/projects", // Alternative location
         ];
 
@@ -258,9 +245,7 @@ mod tests {
             cache_ttl_seconds: 900,
         };
 
-
         original_config.save_to_path(&config_path).unwrap();
-
 
         let loaded_config = Config::load_from_path(&config_path).unwrap();
 
@@ -274,7 +259,6 @@ mod tests {
 
         let config = Config::load_from_path(&config_path).unwrap();
 
-
         assert_eq!(config, Config::default());
     }
 
@@ -282,15 +266,12 @@ mod tests {
     fn test_config_validation() {
         let mut config = Config::default();
 
-
         config.validate().unwrap();
-
 
         config.editor_command = "".to_string();
         assert!(config.validate().is_err());
 
         config.editor_command = "vim".to_string();
-
 
         config.cache_ttl_seconds = 0;
         assert!(config.validate().is_err());
@@ -303,20 +284,16 @@ mod tests {
 
         let new_dir = PathBuf::from("/new/project/dir");
 
-
         config.add_project_dir(&new_dir);
         assert_eq!(config.project_dirs.len(), initial_count + 1);
         assert!(config.project_dirs.contains(&new_dir));
 
-
         config.add_project_dir(&new_dir);
         assert_eq!(config.project_dirs.len(), initial_count + 1);
-
 
         assert!(config.remove_project_dir(&new_dir));
         assert_eq!(config.project_dirs.len(), initial_count);
         assert!(!config.project_dirs.contains(&new_dir));
-
 
         assert!(!config.remove_project_dir(&new_dir));
     }
@@ -332,7 +309,6 @@ mod tests {
         let dirs = default_project_dirs();
         assert!(!dirs.is_empty());
 
-
         for dir in &dirs {
             assert!(dir.is_absolute());
         }
@@ -340,8 +316,8 @@ mod tests {
 
     #[test]
     fn test_config_with_invalid_json() {
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "invalid json content").unwrap();
@@ -366,8 +342,8 @@ mod tests {
 
     #[test]
     fn test_first_time_run_with_temp_config() {
-        use tempfile::NamedTempFile;
         use std::io::Write;
+        use tempfile::NamedTempFile;
 
         let mut temp_file = NamedTempFile::new().unwrap();
         writeln!(temp_file, r#"{{"editor_command": "vim", "project_dirs": [], "github_username": null, "cache_ttl_seconds": 1800}}"#).unwrap();

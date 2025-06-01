@@ -145,7 +145,10 @@ fn get_directory_modified_time(path: &Path) -> Option<DateTime<Utc>> {
     let modified = metadata.modified().ok()?;
 
     DateTime::from_timestamp(
-        modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
+        modified
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs() as i64,
         0,
     )
 }
@@ -154,20 +157,17 @@ fn get_directory_modified_time(path: &Path) -> Option<DateTime<Utc>> {
 mod tests {
     use super::*;
     use crate::models::ProjectSource;
+    use std::fs;
     use std::path::PathBuf;
     use tempfile::TempDir;
-    use std::fs;
 
     fn create_test_project(base_dir: &Path, name: &str, project_file: &str) -> PathBuf {
         let project_dir = base_dir.join(name);
         fs::create_dir_all(&project_dir).unwrap();
 
-
         Repository::init(&project_dir).unwrap();
 
-
         fs::write(project_dir.join(project_file), "").unwrap();
-
 
         match project_file {
             "Cargo.toml" => {
@@ -189,9 +189,7 @@ mod tests {
         let project_dir = base_dir.join(name);
         fs::create_dir_all(&project_dir).unwrap();
 
-
         Repository::init(&project_dir).unwrap();
-
 
         fs::write(project_dir.join("README.md"), "# Git Project").unwrap();
 
@@ -202,18 +200,14 @@ mod tests {
     fn test_is_project_directory() {
         let temp_dir = TempDir::new().unwrap();
 
-
         let rust_project = create_test_project(temp_dir.path(), "rust-project", "Cargo.toml");
         assert!(is_project_directory(&rust_project));
-
 
         let node_project = create_test_project(temp_dir.path(), "node-project", "package.json");
         assert!(is_project_directory(&node_project));
 
-
         let git_project = create_git_project(temp_dir.path(), "git-project");
         assert!(is_project_directory(&git_project));
-
 
         let empty_dir = temp_dir.path().join("empty");
         fs::create_dir_all(&empty_dir).unwrap();
@@ -237,16 +231,13 @@ mod tests {
     fn test_scan_directory() {
         let temp_dir = TempDir::new().unwrap();
 
-
         create_test_project(temp_dir.path(), "rust-app", "Cargo.toml");
         create_test_project(temp_dir.path(), "node-app", "package.json");
         create_git_project(temp_dir.path(), "git-repo");
 
-
         let hidden_dir = temp_dir.path().join(".hidden");
         fs::create_dir_all(&hidden_dir).unwrap();
         fs::write(hidden_dir.join("Cargo.toml"), "").unwrap();
-
 
         let empty_dir = temp_dir.path().join("empty");
         fs::create_dir_all(&empty_dir).unwrap();
@@ -262,7 +253,6 @@ mod tests {
         assert!(!project_names.contains(&".hidden"));
         assert!(!project_names.contains(&"empty"));
 
-
         assert!(projects.iter().all(|p| p.source == ProjectSource::Local));
     }
 
@@ -270,12 +260,13 @@ mod tests {
     fn test_local_scanner() {
         let temp_dir = TempDir::new().unwrap();
 
-
         create_test_project(temp_dir.path(), "project1", "Cargo.toml");
         create_test_project(temp_dir.path(), "project2", "package.json");
 
-        let mut config = Config::default();
-        config.project_dirs = vec![temp_dir.path().to_path_buf()];
+        let config = Config {
+            project_dirs: vec![temp_dir.path().to_path_buf()],
+            ..Config::default()
+        };
 
         let scanner = LocalScanner;
         let result = scanner.scan(&config).unwrap();
@@ -307,11 +298,19 @@ mod tests {
     fn test_project_file_detection() {
         let temp_dir = TempDir::new().unwrap();
 
-
         let project_files = [
-            "Cargo.toml", "package.json", "pyproject.toml", "setup.py",
-            "requirements.txt", "go.mod", "pom.xml", "build.gradle",
-            "Makefile", "justfile", "Dockerfile", "README.md",
+            "Cargo.toml",
+            "package.json",
+            "pyproject.toml",
+            "setup.py",
+            "requirements.txt",
+            "go.mod",
+            "pom.xml",
+            "build.gradle",
+            "Makefile",
+            "justfile",
+            "Dockerfile",
+            "README.md",
         ];
 
         for file in &project_files {
@@ -322,7 +321,6 @@ mod tests {
                 file
             );
         }
-
 
         let non_git_dir = temp_dir.path().join("not-a-git-repo");
         fs::create_dir_all(&non_git_dir).unwrap();

@@ -4,9 +4,9 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use std::process::Command;
 
+use super::ProjectScanner;
 use crate::config::Config;
 use crate::models::{Project, ProjectList};
-use super::ProjectScanner;
 
 pub struct GitHubScanner;
 
@@ -147,7 +147,10 @@ pub fn prompt_github_setup() -> Result<Option<String>> {
                 return Ok(Some(username));
             }
             Err(e) => {
-                println!("⚠️  Authentication detected but could not determine GitHub username: {}", e);
+                println!(
+                    "⚠️  Authentication detected but could not determine GitHub username: {}",
+                    e
+                );
                 println!("This might be due to token scope limitations.");
 
                 let manual_username = dialoguer::Input::<String>::new()
@@ -159,7 +162,10 @@ pub fn prompt_github_setup() -> Result<Option<String>> {
                     println!("⏭️  Skipping GitHub integration.");
                     return Ok(None);
                 } else {
-                    println!("🐙 GitHub integration enabled with username: {}", manual_username.trim());
+                    println!(
+                        "🐙 GitHub integration enabled with username: {}",
+                        manual_username.trim()
+                    );
                     return Ok(Some(manual_username.trim().to_string()));
                 }
             }
@@ -188,7 +194,10 @@ pub fn prompt_github_setup() -> Result<Option<String>> {
                 Ok(Some(username))
             }
             Err(e) => {
-                println!("⚠️  Authentication succeeded but could not determine username: {}", e);
+                println!(
+                    "⚠️  Authentication succeeded but could not determine username: {}",
+                    e
+                );
 
                 let manual_username = dialoguer::Input::<String>::new()
                     .with_prompt("Please enter your GitHub username")
@@ -200,7 +209,10 @@ pub fn prompt_github_setup() -> Result<Option<String>> {
                     println!("⏭️  GitHub authentication completed but no username provided.");
                     Ok(None)
                 } else {
-                    println!("🐙 GitHub integration enabled with username: {}", manual_username.trim());
+                    println!(
+                        "🐙 GitHub integration enabled with username: {}",
+                        manual_username.trim()
+                    );
                     Ok(Some(manual_username.trim().to_string()))
                 }
             }
@@ -223,9 +235,7 @@ pub fn get_gh_username() -> Result<String> {
         anyhow::bail!("Failed to get GitHub username: {}", stderr);
     }
 
-    let username = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_string();
+    let username = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     if username.is_empty() {
         anyhow::bail!("GitHub username is empty");
@@ -234,12 +244,14 @@ pub fn get_gh_username() -> Result<String> {
     Ok(username)
 }
 
-fn fetch_user_repositories_with_timeout(username: &str, timeout_seconds: u64) -> Result<Vec<GitHubRepository>> {
+fn fetch_user_repositories_with_timeout(
+    username: &str,
+    timeout_seconds: u64,
+) -> Result<Vec<GitHubRepository>> {
     use std::process::{Command, Stdio};
     use std::time::{Duration, Instant};
 
     let start_time = Instant::now();
-
 
     let mut child = Command::new("gh")
         .args([
@@ -247,19 +259,18 @@ fn fetch_user_repositories_with_timeout(username: &str, timeout_seconds: u64) ->
             &format!("/users/{}/repos", username),
             "--paginate",
             "--jq",
-            ".[] | {name, html_url, archived, pushed_at, updated_at}"
+            ".[] | {name, html_url, archived, pushed_at, updated_at}",
         ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .context("Failed to spawn GitHub API command")?;
 
-
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-
-                let output = child.wait_with_output()
+                let output = child
+                    .wait_with_output()
                     .context("Failed to get output from GitHub API command")?;
 
                 if !status.success() {
@@ -269,7 +280,6 @@ fn fetch_user_repositories_with_timeout(username: &str, timeout_seconds: u64) ->
 
                 let stdout = String::from_utf8_lossy(&output.stdout);
                 let mut repositories = Vec::new();
-
 
                 for line in stdout.lines() {
                     if line.trim().is_empty() {
@@ -284,12 +294,13 @@ fn fetch_user_repositories_with_timeout(username: &str, timeout_seconds: u64) ->
                 return Ok(repositories);
             }
             Ok(None) => {
-
                 if start_time.elapsed() > Duration::from_secs(timeout_seconds) {
-
                     let _ = child.kill();
                     let _ = child.wait();
-                    anyhow::bail!("GitHub API request timed out after {} seconds", timeout_seconds);
+                    anyhow::bail!(
+                        "GitHub API request timed out after {} seconds",
+                        timeout_seconds
+                    );
                 }
 
                 std::thread::sleep(Duration::from_millis(100));
@@ -303,14 +314,11 @@ fn fetch_user_repositories_with_timeout(username: &str, timeout_seconds: u64) ->
 }
 
 fn repository_to_project(repo: GitHubRepository, config: &Config) -> Result<Option<Project>> {
-
     if repo.archived {
         return Ok(None);
     }
 
-
     let clone_path = get_clone_path(&repo.name, config)?;
-
 
     let last_modified = parse_github_timestamp(&repo.pushed_at.or(repo.updated_at))?;
 
@@ -324,9 +332,7 @@ fn repository_to_project(repo: GitHubRepository, config: &Config) -> Result<Opti
 }
 
 fn get_clone_path(repo_name: &str, _config: &Config) -> Result<PathBuf> {
-    let home = dirs::home_dir()
-        .context("Failed to get home directory")?;
-
+    let home = dirs::home_dir().context("Failed to get home directory")?;
 
     Ok(home.join("Documents/git").join(repo_name))
 }
@@ -372,14 +378,11 @@ mod tests {
 
     #[test]
     fn test_github_scanner_no_gh_cli() {
-
         let scanner = GitHubScanner;
         let config = Config {
             github_username: Some("testuser".to_string()),
             ..Config::default()
         };
-
-
 
         let result = scanner.scan(&config);
         assert!(result.is_ok());
@@ -394,9 +397,11 @@ mod tests {
 
         assert_eq!(project.name, "my-project");
         assert_eq!(project.source, ProjectSource::GitHub);
-        assert_eq!(project.github_url, Some("https://github.com/testuser/my-project".to_string()));
+        assert_eq!(
+            project.github_url,
+            Some("https://github.com/testuser/my-project".to_string())
+        );
         assert!(project.last_modified.is_some());
-
 
         let expected_path = dirs::home_dir().unwrap().join("Documents/git/my-project");
         assert_eq!(project.path, expected_path);
@@ -462,17 +467,12 @@ mod tests {
 
     #[test]
     fn test_is_gh_installed() {
-
-
         let installed = is_gh_installed();
-
-        assert!(installed == true || installed == false);
+        assert!(installed || !installed);
     }
 
     #[test]
     fn test_is_gh_authenticated() {
-
-
         let result = is_gh_authenticated();
         assert!(result.is_ok());
     }

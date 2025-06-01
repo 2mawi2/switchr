@@ -4,9 +4,9 @@ use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use super::ProjectScanner;
 use crate::config::Config;
 use crate::models::{Project, ProjectList};
-use super::ProjectScanner;
 
 pub struct CursorScanner;
 
@@ -25,14 +25,14 @@ struct WorkspaceIdentifier {
 impl ProjectScanner for CursorScanner {
     fn scan(&self, _config: &Config) -> Result<ProjectList> {
         let mut project_list = ProjectList::new();
-        
+
         let cursor_storage_path = get_cursor_storage_path()?;
         if !cursor_storage_path.exists() {
             return Ok(project_list);
         }
 
         let workspaces = scan_cursor_workspaces(&cursor_storage_path)?;
-        
+
         for workspace in workspaces {
             if let Some(project) = workspace_to_project(workspace)? {
                 project_list.add_project(project);
@@ -49,34 +49,36 @@ impl ProjectScanner for CursorScanner {
 }
 
 fn get_cursor_storage_path() -> Result<PathBuf> {
-    let home = dirs::home_dir()
-        .context("Failed to get home directory")?;
-    
+    let home = dirs::home_dir().context("Failed to get home directory")?;
+
     #[cfg(target_os = "macos")]
     let storage_path = home.join("Library/Application Support/Cursor/User/workspaceStorage");
-    
+
     #[cfg(target_os = "linux")]
     let storage_path = home.join(".config/Cursor/User/workspaceStorage");
-    
+
     #[cfg(target_os = "windows")]
     let storage_path = home.join("AppData/Roaming/Cursor/User/workspaceStorage");
-    
+
     Ok(storage_path)
 }
 
 fn scan_cursor_workspaces(storage_path: &Path) -> Result<Vec<WorkspaceInfo>> {
     let mut workspaces = Vec::new();
-    
+
     if !storage_path.exists() {
         return Ok(workspaces);
     }
 
-    for entry in fs::read_dir(storage_path)
-        .with_context(|| format!("Failed to read Cursor storage directory: {}", storage_path.display()))?
-    {
+    for entry in fs::read_dir(storage_path).with_context(|| {
+        format!(
+            "Failed to read Cursor storage directory: {}",
+            storage_path.display()
+        )
+    })? {
         let entry = entry.context("Failed to read directory entry")?;
         let workspace_dir = entry.path();
-        
+
         if !workspace_dir.is_dir() {
             continue;
         }
@@ -98,35 +100,44 @@ struct WorkspaceInfo {
 
 fn parse_workspace_directory(workspace_dir: &Path) -> Result<Option<WorkspaceInfo>> {
     let workspace_json_path = workspace_dir.join("workspace.json");
-    
+
     if !workspace_json_path.exists() {
         return Ok(None);
     }
 
-    let content = fs::read_to_string(&workspace_json_path)
-        .with_context(|| format!("Failed to read workspace.json: {}", workspace_json_path.display()))?;
+    let content = fs::read_to_string(&workspace_json_path).with_context(|| {
+        format!(
+            "Failed to read workspace.json: {}",
+            workspace_json_path.display()
+        )
+    })?;
 
-    let storage: WorkspaceStorage = serde_json::from_str(&content)
-        .with_context(|| format!("Failed to parse workspace.json: {}", workspace_json_path.display()))?;
+    let storage: WorkspaceStorage = serde_json::from_str(&content).with_context(|| {
+        format!(
+            "Failed to parse workspace.json: {}",
+            workspace_json_path.display()
+        )
+    })?;
 
     if let Some(workspace_id) = storage.workspace_identifier {
         if let Some(config_path) = workspace_id.config_path {
             let project_path = PathBuf::from(&config_path);
-            
-            
+
             let project_name = project_path
                 .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown")
                 .to_string();
 
-            
             let last_modified = fs::metadata(&workspace_json_path)
                 .ok()
                 .and_then(|metadata| metadata.modified().ok())
                 .and_then(|modified| {
                     DateTime::from_timestamp(
-                        modified.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs() as i64,
+                        modified
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .ok()?
+                            .as_secs() as i64,
                         0,
                     )
                 });
@@ -143,13 +154,12 @@ fn parse_workspace_directory(workspace_dir: &Path) -> Result<Option<WorkspaceInf
 }
 
 fn workspace_to_project(workspace: WorkspaceInfo) -> Result<Option<Project>> {
-    
     if !workspace.path.exists() {
         return Ok(None);
     }
 
     let mut project = Project::new_cursor(workspace.name, workspace.path);
-    
+
     if let Some(timestamp) = workspace.last_modified {
         project = project.with_last_modified(timestamp);
     }
@@ -161,23 +171,27 @@ fn workspace_to_project(workspace: WorkspaceInfo) -> Result<Option<Project>> {
 mod tests {
     use super::*;
     use crate::models::ProjectSource;
+    use chrono::TimeZone;
     use std::fs;
     use tempfile::TempDir;
-    use chrono::TimeZone;
 
-    fn create_test_workspace_storage(base_dir: &Path, workspace_id: &str, config_path: &str) -> PathBuf {
+    fn create_test_workspace_storage(
+        base_dir: &Path,
+        workspace_id: &str,
+        config_path: &str,
+    ) -> PathBuf {
         let workspace_dir = base_dir.join(workspace_id);
         fs::create_dir_all(&workspace_dir).unwrap();
-        
+
         let workspace_json = serde_json::json!({
             "workspaceIdentifier": {
                 "configPath": config_path,
             }
         });
-        
+
         let workspace_json_path = workspace_dir.join("workspace.json");
         fs::write(&workspace_json_path, workspace_json.to_string()).unwrap();
-        
+
         workspace_dir
     }
 
@@ -185,10 +199,9 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_path = temp_dir.path().join(path.trim_start_matches('/'));
         fs::create_dir_all(&project_path).unwrap();
-        
-        
+
         fs::write(project_path.join("README.md"), "# Test Project").unwrap();
-        
+
         temp_dir
     }
 
@@ -198,7 +211,6 @@ mod tests {
         let _scanner = CursorScanner;
         let _config = Config::default();
 
-        
         let result = scan_cursor_workspaces(temp_dir.path()).unwrap();
         assert!(result.is_empty());
     }
@@ -207,7 +219,7 @@ mod tests {
     fn test_cursor_scanner_nonexistent_storage() {
         let temp_dir = TempDir::new().unwrap();
         let nonexistent = temp_dir.path().join("does-not-exist");
-        
+
         let result = scan_cursor_workspaces(&nonexistent).unwrap();
         assert!(result.is_empty());
     }
@@ -217,15 +229,15 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_temp = create_test_project_dir("/Users/test/my-project");
         let project_path = project_temp.path().join("Users/test/my-project");
-        
+
         let workspace_dir = create_test_workspace_storage(
             temp_dir.path(),
             "workspace123",
-            project_path.to_str().unwrap()
+            project_path.to_str().unwrap(),
         );
 
         let workspace_info = parse_workspace_directory(&workspace_dir).unwrap().unwrap();
-        
+
         assert_eq!(workspace_info.name, "my-project");
         assert_eq!(workspace_info.path, project_path);
         assert!(workspace_info.last_modified.is_some());
@@ -246,7 +258,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let workspace_dir = temp_dir.path().join("workspace123");
         fs::create_dir_all(&workspace_dir).unwrap();
-        
+
         let workspace_json_path = workspace_dir.join("workspace.json");
         fs::write(&workspace_json_path, "{ invalid json }").unwrap();
 
@@ -259,13 +271,13 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let workspace_dir = temp_dir.path().join("workspace123");
         fs::create_dir_all(&workspace_dir).unwrap();
-        
+
         let workspace_json = serde_json::json!({
             "workspaceIdentifier": {
-                
+
             }
         });
-        
+
         let workspace_json_path = workspace_dir.join("workspace.json");
         fs::write(&workspace_json_path, workspace_json.to_string()).unwrap();
 
@@ -277,7 +289,7 @@ mod tests {
     fn test_workspace_to_project_existing_path() {
         let project_temp = create_test_project_dir("/Users/test/existing-project");
         let project_path = project_temp.path().join("Users/test/existing-project");
-        
+
         let workspace_info = WorkspaceInfo {
             path: project_path.clone(),
             name: "existing-project".to_string(),
@@ -285,7 +297,7 @@ mod tests {
         };
 
         let project = workspace_to_project(workspace_info).unwrap().unwrap();
-        
+
         assert_eq!(project.name, "existing-project");
         assert_eq!(project.path, project_path);
         assert_eq!(project.source, ProjectSource::Cursor);
@@ -310,7 +322,7 @@ mod tests {
         let non_git_path = temp_dir.path().join("regular-project");
         fs::create_dir_all(&non_git_path).unwrap();
         fs::write(non_git_path.join("some-file.txt"), "content").unwrap();
-        
+
         let workspace_info = WorkspaceInfo {
             path: non_git_path.clone(),
             name: "regular-project".to_string(),
@@ -319,7 +331,7 @@ mod tests {
 
         let result = workspace_to_project(workspace_info).unwrap();
         assert!(result.is_some());
-        
+
         let project = result.unwrap();
         assert_eq!(project.name, "regular-project");
         assert_eq!(project.path, non_git_path);
@@ -331,62 +343,60 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let project_temp1 = create_test_project_dir("/Users/test/project1");
         let project_temp2 = create_test_project_dir("/Users/test/project2");
-        
+
         let project_path1 = project_temp1.path().join("Users/test/project1");
         let project_path2 = project_temp2.path().join("Users/test/project2");
-        
-        
+
         create_test_workspace_storage(
             temp_dir.path(),
             "workspace1",
-            project_path1.to_str().unwrap()
+            project_path1.to_str().unwrap(),
         );
         create_test_workspace_storage(
             temp_dir.path(),
-            "workspace2", 
-            project_path2.to_str().unwrap()
+            "workspace2",
+            project_path2.to_str().unwrap(),
         );
-        
-        
-        create_test_workspace_storage(
-            temp_dir.path(),
-            "workspace3",
-            "/nonexistent/path"
-        );
+
+        create_test_workspace_storage(temp_dir.path(), "workspace3", "/nonexistent/path");
 
         let workspaces = scan_cursor_workspaces(temp_dir.path()).unwrap();
-        assert_eq!(workspaces.len(), 3); 
+        assert_eq!(workspaces.len(), 3);
 
-        
         let mut projects = Vec::new();
         for workspace in workspaces {
             if let Some(project) = workspace_to_project(workspace).unwrap() {
                 projects.push(project);
             }
         }
-        
-        assert_eq!(projects.len(), 2); 
-        
+
+        assert_eq!(projects.len(), 2);
+
         let project_names: Vec<&str> = projects.iter().map(|p| p.name.as_str()).collect();
         assert!(project_names.contains(&"project1"));
         assert!(project_names.contains(&"project2"));
-        
-        
+
         assert!(projects.iter().all(|p| p.source == ProjectSource::Cursor));
     }
 
     #[test]
     fn test_get_cursor_storage_path() {
         let path = get_cursor_storage_path().unwrap();
-        
+
         #[cfg(target_os = "macos")]
-        assert!(path.to_string_lossy().contains("Library/Application Support/Cursor/User/workspaceStorage"));
-        
+        assert!(path
+            .to_string_lossy()
+            .contains("Library/Application Support/Cursor/User/workspaceStorage"));
+
         #[cfg(target_os = "linux")]
-        assert!(path.to_string_lossy().contains(".config/Cursor/User/workspaceStorage"));
-        
+        assert!(path
+            .to_string_lossy()
+            .contains(".config/Cursor/User/workspaceStorage"));
+
         #[cfg(target_os = "windows")]
-        assert!(path.to_string_lossy().contains("AppData/Roaming/Cursor/User/workspaceStorage"));
+        assert!(path
+            .to_string_lossy()
+            .contains("AppData/Roaming/Cursor/User/workspaceStorage"));
     }
 
     #[test]
@@ -394,4 +404,4 @@ mod tests {
         let scanner = CursorScanner;
         assert_eq!(scanner.scanner_name(), "cursor");
     }
-} 
+}

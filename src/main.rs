@@ -1,19 +1,19 @@
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand, CommandFactory};
+use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
 use std::io;
 
-mod models;
-mod config;
 mod cache;
-mod scanner;
+mod config;
+mod models;
 mod opener;
+mod scanner;
 mod tui;
 
-use config::Config;
 use cache::Cache;
-use scanner::ScanManager;
+use config::Config;
 use opener::ProjectOpener;
+use scanner::ScanManager;
 use tui::run_interactive_mode;
 
 #[derive(Parser)]
@@ -51,7 +51,6 @@ pub enum Commands {
     Config,
 
     Completions {
-
         #[arg(value_enum)]
         shell: Shell,
     },
@@ -120,8 +119,7 @@ fn main() -> Result<()> {
                     println!("💡 Tip: Run 'sw setup' to configure GitHub integration for repository discovery");
                 }
             }
-            _ => {
-            }
+            _ => {}
         }
     }
 
@@ -132,14 +130,15 @@ fn main() -> Result<()> {
     config.validate()?;
 
     if cli.verbose {
-        println!("Loaded configuration: editor={}, dirs={}",
-                config.editor_command, config.project_dirs.len());
+        println!(
+            "Loaded configuration: editor={}, dirs={}",
+            config.editor_command,
+            config.project_dirs.len()
+        );
     }
 
     match cli.operation_mode() {
-        OperationMode::Setup => {
-            handle_setup_wizard(&config, cli.verbose)
-        }
+        OperationMode::Setup => handle_setup_wizard(&config, cli.verbose),
         OperationMode::ShowConfig => {
             println!("Configuration:");
             println!("  Editor: {}", config.editor_command);
@@ -161,46 +160,34 @@ fn main() -> Result<()> {
                 } else {
                     println!("  GitHub status: ⚠️  GitHub CLI not installed");
                 }
-            } else {
-                if scanner::github::is_gh_installed() {
-                    match scanner::github::is_gh_authenticated() {
-                        Ok(true) => {
-                            println!("  GitHub: ⚠️  Authenticated but not configured");
-                            println!("    💡 Run 'sw setup' to enable GitHub integration");
-                        }
-                        Ok(false) => {
-                            println!("  GitHub: ❌ Not configured");
-                        }
-                        Err(e) => {
-                            println!("  GitHub: ❌ Not configured (error checking auth: {})", e);
-                        }
+            } else if scanner::github::is_gh_installed() {
+                match scanner::github::is_gh_authenticated() {
+                    Ok(true) => {
+                        println!("  GitHub: ⚠️  Authenticated but not configured");
+                        println!("    💡 Run 'sw setup' to enable GitHub integration");
                     }
-                } else {
-                    println!("  GitHub: ❌ Not configured");
-                    println!("  GitHub CLI: ❌ Not installed");
+                    Ok(false) => {
+                        println!("  GitHub: ❌ Not configured");
+                    }
+                    Err(e) => {
+                        println!("  GitHub: ❌ Not configured (error checking auth: {})", e);
+                    }
                 }
+            } else {
+                println!("  GitHub: ❌ Not configured");
+                println!("  GitHub CLI: ❌ Not installed");
             }
 
             Ok(())
         }
-        OperationMode::List => {
-            list_projects(&config, cli.verbose)
-        }
-        OperationMode::Interactive => {
-            handle_interactive_mode(&config, cli.verbose)
-        }
-        OperationMode::Fzf => {
-            handle_fzf_mode(&config, cli.verbose)
-        }
-        OperationMode::Refresh => {
-            refresh_cache(&config, cli.verbose)
-        }
+        OperationMode::List => list_projects(&config, cli.verbose),
+        OperationMode::Interactive => handle_interactive_mode(&config, cli.verbose),
+        OperationMode::Fzf => handle_fzf_mode(&config, cli.verbose),
+        OperationMode::Refresh => refresh_cache(&config, cli.verbose),
         OperationMode::Direct(project_name) => {
             open_project_by_name(&project_name, &config, cli.verbose)
         }
-        OperationMode::Completions(shell) => {
-            generate_completions(shell)
-        }
+        OperationMode::Completions(shell) => generate_completions(shell),
     }
 }
 
@@ -209,7 +196,8 @@ fn list_projects(config: &Config, verbose: bool) -> Result<()> {
     let scan_manager = ScanManager::new();
 
     let cached_projects = cache.load_projects()?;
-    let should_scan = cached_projects.is_none() || !cache.is_cache_valid(cache.projects_cache_path());
+    let should_scan =
+        cached_projects.is_none() || !cache.is_cache_valid(cache.projects_cache_path());
 
     if let Some(ref cached) = cached_projects {
         if !should_scan {
@@ -244,7 +232,11 @@ fn list_projects(config: &Config, verbose: bool) -> Result<()> {
     cache.save_projects(&project_list)?;
 
     if verbose {
-        println!("Found {} projects in {:.2?}", project_list.len(), scan_duration);
+        println!(
+            "Found {} projects in {:.2?}",
+            project_list.len(),
+            scan_duration
+        );
     }
 
     if project_list.is_empty() {
@@ -300,13 +292,18 @@ fn open_project_by_name(project_name: &str, config: &Config, verbose: bool) -> R
         project_list.projects().to_vec()
     };
 
-    let matching_project = projects.iter()
+    let matching_project = projects
+        .iter()
         .find(|p| p.name.to_lowercase().contains(&project_name.to_lowercase()))
         .cloned();
 
     if let Some(project) = matching_project {
         if verbose {
-            println!("Found project: {} at {}", project.name, project.path.display());
+            println!(
+                "Found project: {} at {}",
+                project.name,
+                project.path.display()
+            );
         }
 
         opener.open_project(&project, config)?;
@@ -323,13 +320,19 @@ fn open_project_by_name(project_name: &str, config: &Config, verbose: bool) -> R
             let fresh_projects = scan_manager.scan_all_verbose(config, verbose)?;
             cache.save_projects(&fresh_projects)?;
 
-            let fresh_matching = fresh_projects.projects().iter()
+            let fresh_matching = fresh_projects
+                .projects()
+                .iter()
                 .find(|p| p.name.to_lowercase().contains(&project_name.to_lowercase()))
                 .cloned();
 
             if let Some(project) = fresh_matching {
                 if verbose {
-                    println!("Found project in fresh scan: {} at {}", project.name, project.path.display());
+                    println!(
+                        "Found project in fresh scan: {} at {}",
+                        project.name,
+                        project.path.display()
+                    );
                 }
                 opener.open_project(&project, config)?;
                 println!("Opened project: {}", project.name);
@@ -373,7 +376,9 @@ fn handle_interactive_mode(config: &Config, verbose: bool) -> Result<()> {
     }
 
     if projects.is_empty() {
-        println!("No projects found. Try running with --refresh to rescan or check your configuration.");
+        println!(
+            "No projects found. Try running with --refresh to rescan or check your configuration."
+        );
         return Ok(());
     }
 
@@ -383,7 +388,11 @@ fn handle_interactive_mode(config: &Config, verbose: bool) -> Result<()> {
 
     if let Some(selected_project) = run_interactive_mode(projects)? {
         if verbose {
-            println!("Selected project: {} at {}", selected_project.name, selected_project.path.display());
+            println!(
+                "Selected project: {} at {}",
+                selected_project.name,
+                selected_project.path.display()
+            );
         }
 
         opener.open_project(&selected_project, config)?;
@@ -396,8 +405,8 @@ fn handle_interactive_mode(config: &Config, verbose: bool) -> Result<()> {
 }
 
 fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
-    use std::process::{Command, Stdio};
     use std::io::Write;
+    use std::process::{Command, Stdio};
 
     if which::which("fzf").is_err() {
         anyhow::bail!("fzf binary not found. Please install fzf to use this mode.");
@@ -431,7 +440,9 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
     }
 
     if projects.is_empty() {
-        println!("No projects found. Try running with --refresh to rescan or check your configuration.");
+        println!(
+            "No projects found. Try running with --refresh to rescan or check your configuration."
+        );
         return Ok(());
     }
 
@@ -439,23 +450,24 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
         println!("Piping {} projects to fzf", projects.len());
     }
 
+    let project_lines: Vec<String> = projects
+        .iter()
+        .map(|project| {
+            let source_indicator = match project.source {
+                models::ProjectSource::Local => "📁",
+                models::ProjectSource::Cursor => "🎯",
+                models::ProjectSource::GitHub => "🐙",
+            };
 
-    let project_lines: Vec<String> = projects.iter().map(|project| {
-        let source_indicator = match project.source {
-            models::ProjectSource::Local => "📁",
-            models::ProjectSource::Cursor => "🎯",
-            models::ProjectSource::GitHub => "🐙",
-        };
+            let time_str = if let Some(timestamp) = project.last_modified {
+                format!(" ({})", timestamp.format("%Y-%m-%d %H:%M"))
+            } else {
+                String::new()
+            };
 
-        let time_str = if let Some(timestamp) = project.last_modified {
-            format!(" ({})", timestamp.format("%Y-%m-%d %H:%M"))
-        } else {
-            String::new()
-        };
-
-        format!("{} {}{}", source_indicator, project.name, time_str)
-    }).collect();
-
+            format!("{} {}{}", source_indicator, project.name, time_str)
+        })
+        .collect();
 
     let mut fzf_process = Command::new("fzf")
         .arg("--prompt=Select project: ")
@@ -468,20 +480,17 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
         .spawn()
         .context("Failed to spawn fzf process")?;
 
-
     if let Some(stdin) = fzf_process.stdin.as_mut() {
         for line in &project_lines {
-            writeln!(stdin, "{}", line)
-                .context("Failed to write to fzf stdin")?;
+            writeln!(stdin, "{}", line).context("Failed to write to fzf stdin")?;
         }
     }
 
-
-    let output = fzf_process.wait_with_output()
+    let output = fzf_process
+        .wait_with_output()
         .context("Failed to wait for fzf process")?;
 
     if !output.status.success() {
-
         if verbose {
             println!("fzf cancelled or failed");
         }
@@ -500,8 +509,8 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
         return Ok(());
     }
 
-
-    let selected_project = projects.iter()
+    let selected_project = projects
+        .iter()
         .zip(project_lines.iter())
         .find(|(_, line)| **line == selected_line)
         .map(|(project, _)| project)
@@ -509,7 +518,11 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
 
     if let Some(project) = selected_project {
         if verbose {
-            println!("Selected project: {} at {}", project.name, project.path.display());
+            println!(
+                "Selected project: {} at {}",
+                project.name,
+                project.path.display()
+            );
         }
 
         opener.open_project(&project, config)?;
@@ -522,7 +535,7 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
 }
 
 fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
-    use dialoguer::{Input, Confirm};
+    use dialoguer::{Confirm, Input};
     use std::path::PathBuf;
 
     println!("🚀 Welcome to the sw setup wizard!");
@@ -532,13 +545,11 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         println!("Current configuration will be used as defaults");
     }
 
-
     let editor_command: String = Input::new()
         .with_prompt("Editor command")
         .default(config.editor_command.clone())
         .interact()
         .context("Failed to get editor command input")?;
-
 
     println!("\n📁 Project directories configuration:");
     println!("Current directories: {:?}", config.project_dirs);
@@ -574,9 +585,7 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         }
     }
 
-
     println!("\n🐙 GitHub configuration:");
-
 
     if which::which("gh").is_err() {
         println!("⚠️  GitHub CLI (gh) is not installed.");
@@ -594,7 +603,6 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
             return Ok(());
         }
 
-
         let new_config = Config {
             editor_command,
             project_dirs,
@@ -607,20 +615,19 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         return Ok(());
     }
 
-
-    let is_authenticated = scanner::github::is_gh_authenticated()
-        .unwrap_or(false);
+    let is_authenticated = scanner::github::is_gh_authenticated().unwrap_or(false);
 
     let new_config = if is_authenticated {
         println!("✅ GitHub CLI is authenticated");
 
-
-        let current_username = scanner::github::get_gh_username().unwrap_or_else(|_|
-            config.github_username.as_deref().unwrap_or("").to_string()
-        );
+        let current_username = scanner::github::get_gh_username()
+            .unwrap_or_else(|_| config.github_username.as_deref().unwrap_or("").to_string());
 
         let use_github = Confirm::new()
-            .with_prompt(format!("Enable GitHub repository discovery for user '{}'?", current_username))
+            .with_prompt(format!(
+                "Enable GitHub repository discovery for user '{}'?",
+                current_username
+            ))
             .default(true)
             .interact()
             .context("Failed to get GitHub usage confirmation")?;
@@ -630,7 +637,6 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         } else {
             None
         };
-
 
         let config = Config {
             editor_command,
@@ -644,7 +650,6 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         }
 
         config
-
     } else {
         println!("❌ GitHub CLI is not authenticated");
 
@@ -659,7 +664,6 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
 
             if scanner::github::run_gh_auth_login()? {
                 println!("✅ GitHub authentication successful!");
-
 
                 match scanner::github::get_gh_username() {
                     Ok(username) => {
@@ -689,7 +693,6 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
             None
         };
 
-
         let config = Config {
             editor_command,
             project_dirs,
@@ -704,10 +707,8 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         config
     };
 
-
     new_config.save().context("Failed to save configuration")?;
     println!("\n✅ Configuration saved successfully!");
-
 
     if let Err(e) = new_config.validate() {
         println!("⚠️  Configuration validation failed: {}", e);
@@ -728,7 +729,10 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
     if verbose {
         println!("\nNew configuration:");
         println!("  Editor: {}", new_config.editor_command);
-        println!("  Project directories: {} entries", new_config.project_dirs.len());
+        println!(
+            "  Project directories: {} entries",
+            new_config.project_dirs.len()
+        );
         if let Some(ref username) = new_config.github_username {
             println!("  GitHub username: {}", username);
         }
@@ -769,7 +773,10 @@ mod tests {
         let cli = Cli::try_parse_from(&["sw", "my-project"]).unwrap();
 
         assert_eq!(cli.project_name, Some("my-project".to_string()));
-        assert_eq!(cli.operation_mode(), OperationMode::Direct("my-project".to_string()));
+        assert_eq!(
+            cli.operation_mode(),
+            OperationMode::Direct("my-project".to_string())
+        );
     }
 
     #[test]
@@ -832,7 +839,10 @@ mod tests {
     #[test]
     fn test_operation_mode_precedence() {
         let cli = Cli::try_parse_from(&["sw", "project-name"]).unwrap();
-        assert_eq!(cli.operation_mode(), OperationMode::Direct("project-name".to_string()));
+        assert_eq!(
+            cli.operation_mode(),
+            OperationMode::Direct("project-name".to_string())
+        );
 
         let cli = Cli::try_parse_from(&["sw", "setup"]).unwrap();
         assert_eq!(cli.operation_mode(), OperationMode::Setup);
@@ -841,19 +851,42 @@ mod tests {
     #[test]
     fn test_cli_completions_subcommand() {
         let cli = Cli::try_parse_from(&["sw", "completions", "bash"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Completions { shell: Shell::Bash })));
-        assert_eq!(cli.operation_mode(), OperationMode::Completions(Shell::Bash));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Completions { shell: Shell::Bash })
+        ));
+        assert_eq!(
+            cli.operation_mode(),
+            OperationMode::Completions(Shell::Bash)
+        );
 
         let cli = Cli::try_parse_from(&["sw", "completions", "zsh"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Completions { shell: Shell::Zsh })));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Completions { shell: Shell::Zsh })
+        ));
         assert_eq!(cli.operation_mode(), OperationMode::Completions(Shell::Zsh));
 
         let cli = Cli::try_parse_from(&["sw", "completions", "fish"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Completions { shell: Shell::Fish })));
-        assert_eq!(cli.operation_mode(), OperationMode::Completions(Shell::Fish));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Completions { shell: Shell::Fish })
+        ));
+        assert_eq!(
+            cli.operation_mode(),
+            OperationMode::Completions(Shell::Fish)
+        );
 
         let cli = Cli::try_parse_from(&["sw", "completions", "powershell"]).unwrap();
-        assert!(matches!(cli.command, Some(Commands::Completions { shell: Shell::PowerShell })));
-        assert_eq!(cli.operation_mode(), OperationMode::Completions(Shell::PowerShell));
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Completions {
+                shell: Shell::PowerShell
+            })
+        ));
+        assert_eq!(
+            cli.operation_mode(),
+            OperationMode::Completions(Shell::PowerShell)
+        );
     }
 }

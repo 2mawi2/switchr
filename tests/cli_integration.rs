@@ -9,7 +9,9 @@ fn test_cli_help() {
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("A fast project switcher for developers"))
+        .stdout(predicate::str::contains(
+            "A fast project switcher for developers",
+        ))
         .stdout(predicate::str::contains("Usage:"));
 }
 
@@ -46,19 +48,17 @@ fn test_setup_subcommand() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("setup");
 
-
     let result = cmd.assert();
 
     let output = result.get_output();
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-
     assert!(
-        stdout.contains("Welcome to the sw setup wizard") ||
-        stderr.contains("Failed to get") ||
-        stderr.contains("not a terminal") ||
-        !output.status.success()
+        stdout.contains("Welcome to the sw setup wizard")
+            || stderr.contains("Failed to get")
+            || stderr.contains("not a terminal")
+            || !output.status.success()
     );
 }
 
@@ -73,11 +73,11 @@ fn test_list_subcommand() {
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.arg("list");
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Found")
+    cmd.assert().success().stdout(
+        predicate::str::contains("Found")
             .and(predicate::str::contains("project(s):"))
-            .or(predicate::str::contains("No projects found")));
+            .or(predicate::str::contains("No projects found")),
+    );
 }
 
 #[test]
@@ -93,12 +93,23 @@ fn test_verbose_flag() {
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Running sw with verbose output enabled"))
+        .stdout(predicate::str::contains(
+            "Running sw with verbose output enabled",
+        ))
         .stdout(predicate::str::contains("Loaded configuration:"));
 }
 
 #[test]
 fn test_interactive_mode_default() {
+    // Skip this test if we're in a CI environment or no TTY is available
+    if std::env::var("CI").is_ok()
+        || std::env::var("GITHUB_ACTIONS").is_ok()
+        || !atty::is(atty::Stream::Stdin)
+    {
+        eprintln!("Skipping interactive test in CI environment or non-TTY context");
+        return;
+    }
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
 
     cmd.assert()
@@ -117,11 +128,11 @@ fn test_list_flag() {
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.arg("--list");
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Found")
+    cmd.assert().success().stdout(
+        predicate::str::contains("Found")
             .and(predicate::str::contains("project(s):"))
-            .or(predicate::str::contains("No projects found")));
+            .or(predicate::str::contains("No projects found")),
+    );
 }
 
 #[test]
@@ -129,18 +140,16 @@ fn test_fzf_flag() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("--fzf");
 
-
     let result = cmd.assert();
 
     let output = result.get_output();
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-
     assert!(
-        output.status.success() ||
-        stderr.contains("fzf binary not found") ||
-        stdout.contains("fzf binary not found")
+        output.status.success()
+            || stderr.contains("fzf binary not found")
+            || stdout.contains("fzf binary not found")
     );
 }
 
@@ -204,8 +213,12 @@ fn test_subcommand_with_flags() {
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Running sw with verbose output enabled"))
-        .stdout(predicate::str::contains("Cache invalidated. Next scan will rebuild from scratch."));
+        .stdout(predicate::str::contains(
+            "Running sw with verbose output enabled",
+        ))
+        .stdout(predicate::str::contains(
+            "Cache invalidated. Next scan will rebuild from scratch.",
+        ));
 }
 
 #[test]
@@ -219,11 +232,11 @@ fn test_cursor_scanner_integration() {
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.args(["--verbose", "list"]);
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Found")
+    cmd.assert().success().stdout(
+        predicate::str::contains("Found")
             .and(predicate::str::contains("project(s):"))
-            .or(predicate::str::contains("No projects found")));
+            .or(predicate::str::contains("No projects found")),
+    );
 }
 
 #[test]
@@ -231,19 +244,16 @@ fn test_fzf_mode_implementation() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("--fzf");
 
-
     let result = cmd.assert();
-
 
     let output = result.get_output();
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-
     assert!(
-        output.status.success() ||
-        stderr.contains("fzf binary not found") ||
-        stdout.contains("fzf binary not found")
+        output.status.success()
+            || stderr.contains("fzf binary not found")
+            || stdout.contains("fzf binary not found")
     );
 }
 
@@ -252,21 +262,17 @@ fn test_setup_wizard_implementation() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("setup");
 
-
-
     let result = cmd.assert();
-
 
     let output = result.get_output();
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-
     assert!(
-        stdout.contains("Welcome to the sw setup wizard") ||
-        stderr.contains("Failed to get") ||
-        stderr.contains("not a tty") ||
-        !output.status.success()
+        stdout.contains("Welcome to the sw setup wizard")
+            || stderr.contains("Failed to get")
+            || stderr.contains("not a tty")
+            || !output.status.success()
     );
 }
 
@@ -281,11 +287,11 @@ fn test_first_time_setup_logic_isolated() {
         .arg("--list")
         .arg("--verbose");
 
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::contains("Found")
+    cmd.assert().success().stdout(
+        predicate::str::contains("Found")
             .and(predicate::str::contains("project(s):"))
-            .or(predicate::str::contains("No projects found")));
+            .or(predicate::str::contains("No projects found")),
+    );
 }
 
 #[test]
