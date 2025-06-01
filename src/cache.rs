@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::config::Config;
-use crate::models::{Project, ProjectList};
+use crate::models::ProjectList;
 
 #[derive(Debug)]
 pub struct Cache {
@@ -70,11 +70,14 @@ impl Cache {
         let data = fs::read(&cache_path)
             .with_context(|| format!("Failed to read cache file: {}", cache_path.display()))?;
 
-        let projects: Vec<Project> = bincode::serde::decode_from_slice(&data, bincode::config::standard())
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize cache: {}", e))?
-            .0;
-
-        Ok(Some(ProjectList::from_projects(projects)))
+        match bincode::serde::decode_from_slice::<Vec<crate::models::Project>, _>(&data, bincode::config::standard()) {
+            Ok((projects, _)) => Ok(Some(ProjectList::from_projects(projects))),
+            Err(_) => {
+                // Cache is corrupted, invalidate it and return None to trigger fresh scan
+                let _ = fs::remove_file(&cache_path);
+                Ok(None)
+            }
+        }
     }
 
     fn atomic_write<P: AsRef<Path>>(&self, target_path: P, data: &[u8]) -> Result<()> {
@@ -171,11 +174,16 @@ impl Cache {
         let data = fs::read(&cache_path)
             .with_context(|| format!("Failed to read GitHub cache: {}", cache_path.display()))?;
 
-        let projects: Vec<Project> = bincode::serde::decode_from_slice(&data, bincode::config::standard())
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize GitHub cache: {}", e))?
-            .0;
-
-        Ok(Some(ProjectList::from_projects(projects)))
+        match bincode::serde::decode_from_slice::<Vec<crate::models::Project>, _>(&data, bincode::config::standard()) {
+            Ok((projects, _)) => Ok(Some(ProjectList::from_projects(projects))),
+            Err(_) => {
+                // Cache is corrupted, invalidate it and return None to trigger fresh scan
+                if let Err(e) = fs::remove_file(&cache_path) {
+                    eprintln!("Warning: Failed to remove corrupted GitHub cache file: {}", e);
+                }
+                Ok(None)
+            }
+        }
     }
 
     #[allow(dead_code)]
@@ -437,5 +445,55 @@ mod tests {
 
         let projects = loaded_projects.unwrap();
         assert!(!projects.is_empty(), "Cache should contain projects");
+    }
+
+    #[test]
+    fn test_corrupted_cache_handling() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache = Cache {
+            cache_dir: temp_dir.path().to_path_buf(),
+            ttl_seconds: 60,
+        };
+
+        let cache_path = cache.projects_cache_path();
+        
+        // Create a corrupted cache file with invalid data
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        fs::write(&cache_path, b"invalid corrupted data that cannot be deserialized").unwrap();
+        
+        // Verify file exists
+        assert!(cache_path.exists());
+        
+        // Loading should return None (not an error) and remove the corrupted file
+        let result = cache.load_projects().unwrap();
+        assert!(result.is_none());
+        
+        // Corrupted file should be removed
+        assert!(!cache_path.exists());
+    }
+
+    #[test]
+    fn test_corrupted_github_cache_handling() {
+        let temp_dir = TempDir::new().unwrap();
+        let cache = Cache {
+            cache_dir: temp_dir.path().to_path_buf(),
+            ttl_seconds: 60,
+        };
+
+        let cache_path = cache.github_cache_path();
+        
+        // Create a corrupted cache file with invalid data
+        fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
+        fs::write(&cache_path, b"invalid corrupted data that cannot be deserialized").unwrap();
+        
+        // Verify file exists
+        assert!(cache_path.exists());
+        
+        // Loading should return None (not an error) and remove the corrupted file
+        let result = cache.load_github_projects().unwrap();
+        assert!(result.is_none());
+        
+        // Corrupted file should be removed
+        assert!(!cache_path.exists());
     }
 }
