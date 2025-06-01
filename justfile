@@ -14,7 +14,7 @@ build-release:
 
 # Run clippy linter
 lint:
-    cargo clippy -- -D warnings
+    cargo clippy --all-features --all-targets -- -D warnings
 
 # Format code
 fmt:
