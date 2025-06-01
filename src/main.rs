@@ -98,17 +98,13 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = Config::load()?;
 
-    // Check if this is the first time running and GitHub is not configured
     let is_first_time = Config::is_first_time_run().unwrap_or(false);
     let should_setup_github = config.should_prompt_github_setup();
-    
-    // Only prompt for GitHub setup on first run if we're not in a non-interactive mode
+
     if is_first_time && should_setup_github {
         match cli.operation_mode() {
             OperationMode::Interactive | OperationMode::Fzf => {
-                // Interactive modes - safe to prompt
                 if let Ok(Some(github_username)) = scanner::github::prompt_github_setup() {
-                    // Save the updated config with GitHub username
                     let updated_config = Config {
                         github_username: Some(github_username),
                         ..config.clone()
@@ -120,13 +116,11 @@ fn main() -> Result<()> {
                 }
             }
             OperationMode::List | OperationMode::ShowConfig => {
-                // Non-interactive modes - just show a helpful message
                 if cli.verbose {
                     println!("💡 Tip: Run 'sw setup' to configure GitHub integration for repository discovery");
                 }
             }
             _ => {
-                // Other modes (Setup, Direct, etc.) - don't interfere
             }
         }
     }
@@ -158,7 +152,6 @@ fn main() -> Result<()> {
             if let Some(ref username) = config.github_username {
                 println!("  GitHub username: {}", username);
 
-                // Check authentication status
                 if scanner::github::is_gh_installed() {
                     match scanner::github::is_gh_authenticated() {
                         Ok(true) => println!("  GitHub status: ✅ Authenticated"),
@@ -169,7 +162,6 @@ fn main() -> Result<()> {
                     println!("  GitHub status: ⚠️  GitHub CLI not installed");
                 }
             } else {
-                // No GitHub username configured, but let's check if they're authenticated anyway
                 if scanner::github::is_gh_installed() {
                     match scanner::github::is_gh_authenticated() {
                         Ok(true) => {
@@ -248,7 +240,7 @@ fn list_projects(config: &Config, verbose: bool) -> Result<()> {
     let scan_start = std::time::Instant::now();
     let project_list = scan_manager.scan_all_verbose(config, verbose)?;
     let scan_duration = scan_start.elapsed();
-    
+
     cache.save_projects(&project_list)?;
 
     if verbose {

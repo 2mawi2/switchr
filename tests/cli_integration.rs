@@ -6,7 +6,7 @@ use tempfile::TempDir;
 fn test_cli_help() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("--help");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("A fast project switcher for developers"))
@@ -17,7 +17,7 @@ fn test_cli_help() {
 fn test_cli_version() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("--version");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("sw "));
@@ -26,14 +26,14 @@ fn test_cli_version() {
 #[test]
 fn test_config_subcommand() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
-    
+
     cmd.env("HOME", temp_dir.path());
     cmd.env("XDG_CACHE_HOME", temp_dir.path().join(".cache"));
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.arg("config");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Configuration:"))
@@ -45,15 +45,15 @@ fn test_config_subcommand() {
 fn test_setup_subcommand() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("setup");
-    
-    
+
+
     let result = cmd.assert();
-    
+
     let output = result.get_output();
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
-    
+
+
     assert!(
         stdout.contains("Welcome to the sw setup wizard") ||
         stderr.contains("Failed to get") ||
@@ -65,14 +65,14 @@ fn test_setup_subcommand() {
 #[test]
 fn test_list_subcommand() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
-    
+
     cmd.env("HOME", temp_dir.path());
     cmd.env("XDG_CACHE_HOME", temp_dir.path().join(".cache"));
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.arg("list");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Found")
@@ -83,14 +83,14 @@ fn test_list_subcommand() {
 #[test]
 fn test_verbose_flag() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
-    
+
     cmd.env("HOME", temp_dir.path());
     cmd.env("XDG_CACHE_HOME", temp_dir.path().join(".cache"));
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.args(["--verbose", "config"]);
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Running sw with verbose output enabled"))
@@ -100,7 +100,7 @@ fn test_verbose_flag() {
 #[test]
 fn test_interactive_mode_default() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
-    
+
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("Failed to initialize"));
@@ -109,14 +109,14 @@ fn test_interactive_mode_default() {
 #[test]
 fn test_list_flag() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
-    
+
     cmd.env("HOME", temp_dir.path());
     cmd.env("XDG_CACHE_HOME", temp_dir.path().join(".cache"));
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.arg("--list");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Found")
@@ -128,17 +128,17 @@ fn test_list_flag() {
 fn test_fzf_flag() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("--fzf");
-    
-    
+
+
     let result = cmd.assert();
-    
+
     let output = result.get_output();
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
-    
+
+
     assert!(
-        output.status.success() || 
+        output.status.success() ||
         stderr.contains("fzf binary not found") ||
         stdout.contains("fzf binary not found")
     );
@@ -148,7 +148,7 @@ fn test_fzf_flag() {
 fn test_conflicting_flags() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.args(["--list", "--interactive"]);
-    
+
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("cannot be used with"));
@@ -157,14 +157,14 @@ fn test_conflicting_flags() {
 #[test]
 fn test_refresh_subcommand() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
-    
+
     cmd.env("HOME", temp_dir.path());
     cmd.env("XDG_CACHE_HOME", temp_dir.path().join(".cache"));
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.arg("refresh");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Cache refreshed"));
@@ -173,11 +173,11 @@ fn test_refresh_subcommand() {
 #[test]
 fn test_config_file_creation() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.env("HOME", temp_dir.path());
     cmd.arg("config");
-    
+
     cmd.assert().success();
 }
 
@@ -185,7 +185,7 @@ fn test_config_file_creation() {
 fn test_invalid_arguments() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("--invalid-flag");
-    
+
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("unexpected argument"));
@@ -194,14 +194,14 @@ fn test_invalid_arguments() {
 #[test]
 fn test_subcommand_with_flags() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
-    
+
     cmd.env("HOME", temp_dir.path());
     cmd.env("XDG_CACHE_HOME", temp_dir.path().join(".cache"));
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.args(["--verbose", "refresh"]);
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Running sw with verbose output enabled"))
@@ -211,14 +211,14 @@ fn test_subcommand_with_flags() {
 #[test]
 fn test_cursor_scanner_integration() {
     let temp_dir = TempDir::new().unwrap();
-    
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
-    
+
     cmd.env("HOME", temp_dir.path());
     cmd.env("XDG_CACHE_HOME", temp_dir.path().join(".cache"));
     cmd.env("XDG_CONFIG_HOME", temp_dir.path().join(".config"));
     cmd.args(["--verbose", "list"]);
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Found")
@@ -230,18 +230,18 @@ fn test_cursor_scanner_integration() {
 fn test_fzf_mode_implementation() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("--fzf");
-    
-    
+
+
     let result = cmd.assert();
-    
-    
+
+
     let output = result.get_output();
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
-    
+
+
     assert!(
-        output.status.success() || 
+        output.status.success() ||
         stderr.contains("fzf binary not found") ||
         stdout.contains("fzf binary not found")
     );
@@ -251,17 +251,17 @@ fn test_fzf_mode_implementation() {
 fn test_setup_wizard_implementation() {
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.arg("setup");
-    
-    
-    
+
+
+
     let result = cmd.assert();
-    
-    
+
+
     let output = result.get_output();
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
-    
-    
+
+
     assert!(
         stdout.contains("Welcome to the sw setup wizard") ||
         stderr.contains("Failed to get") ||
@@ -272,19 +272,15 @@ fn test_setup_wizard_implementation() {
 
 #[test]
 fn test_first_time_setup_logic_isolated() {
-    // Test the first-time setup logic without depending on external GitHub state
     let temp_dir = TempDir::new().unwrap();
-    
-    // Create a completely isolated environment
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.env("XDG_CONFIG_HOME", temp_dir.path())
         .env("XDG_CACHE_HOME", temp_dir.path().join("cache"))
         .env("HOME", temp_dir.path())
         .arg("--list")
         .arg("--verbose");
-    
-    // Test should pass regardless of external GitHub state
-    // We're just testing that the app runs and shows projects
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Found")
@@ -294,21 +290,16 @@ fn test_first_time_setup_logic_isolated() {
 
 #[test]
 fn test_config_is_first_time_run_detection() {
-    // Test the first-time run detection logic
-    // This test uses the actual Config implementation
     use sw::config::Config;
-    
-    // In a clean test environment, it should detect first time run
-    // Note: This might fail if there's already a config file, but that's ok for CI
+
     let result = Config::is_first_time_run();
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_config_should_prompt_github_setup() {
-    // Test the GitHub setup detection logic
     use sw::config::Config;
-    
+
     let config_without_github = Config {
         editor_command: "vim".to_string(),
         project_dirs: vec![],
@@ -328,10 +319,8 @@ fn test_config_should_prompt_github_setup() {
 
 #[test]
 fn test_github_setup_prompting_logic() {
-    // Test the GitHub setup prompting logic using the Config API directly
     use sw::config::Config;
-    
-    // Test config without GitHub username should prompt for setup
+
     let config_without_github = Config {
         editor_command: "vim".to_string(),
         project_dirs: vec![],
@@ -340,7 +329,6 @@ fn test_github_setup_prompting_logic() {
     };
     assert!(config_without_github.should_prompt_github_setup());
 
-    // Test config with GitHub username should not prompt for setup
     let config_with_github = Config {
         editor_command: "vim".to_string(),
         project_dirs: vec![],
@@ -352,18 +340,17 @@ fn test_github_setup_prompting_logic() {
 
 #[test]
 fn test_config_command_without_external_dependencies() {
-    // Test the config command in an isolated environment
     let temp_dir = TempDir::new().unwrap();
-    
+
     let mut cmd = Command::cargo_bin("sw").unwrap();
     cmd.env("XDG_CONFIG_HOME", temp_dir.path())
         .env("XDG_CACHE_HOME", temp_dir.path().join("cache"))
         .env("HOME", temp_dir.path())
         .arg("config");
-    
+
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Configuration:"))
         .stdout(predicate::str::contains("Editor:"))
         .stdout(predicate::str::contains("Project directories:"));
-} 
+}

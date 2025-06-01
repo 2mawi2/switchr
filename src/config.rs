@@ -146,7 +146,6 @@ impl Config {
 
     /// Check if GitHub integration needs to be configured
     pub fn should_prompt_github_setup(&self) -> bool {
-        // Prompt if GitHub username is not configured
         self.github_username.is_none()
     }
 }
@@ -343,27 +342,23 @@ mod tests {
     fn test_config_with_invalid_json() {
         use tempfile::NamedTempFile;
         use std::io::Write;
-        
+
         let mut file = NamedTempFile::new().unwrap();
         writeln!(file, "invalid json content").unwrap();
-        
+
         let result = Config::load_from_path(file.path());
         assert!(result.is_err());
     }
 
     #[test]
     fn test_is_first_time_run_no_config() {
-        // This test should check if the function works correctly when no config exists
-        // We can test this using a temporary directory
         use tempfile::TempDir;
-        
+
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("sw").join("config.json");
-        
-        // Before creating config, should be first time
+
         assert!(!config_path.exists());
-        
-        // Create a temporary config and check it's no longer first time
+
         fs::create_dir_all(config_path.parent().unwrap()).unwrap();
         fs::write(&config_path, "{}").unwrap();
         assert!(config_path.exists());
@@ -371,18 +366,14 @@ mod tests {
 
     #[test]
     fn test_first_time_run_with_temp_config() {
-        // Test first-time detection using a custom path
         use tempfile::NamedTempFile;
         use std::io::Write;
-        
+
         let mut temp_file = NamedTempFile::new().unwrap();
-        // Write valid JSON content
         writeln!(temp_file, r#"{{"editor_command": "vim", "project_dirs": [], "github_username": null, "cache_ttl_seconds": 1800}}"#).unwrap();
         let temp_path = temp_file.path();
-        
-        // When config file exists with valid content, we can load it
+
         let config = Config::load_from_path(temp_path).unwrap();
-        // This test just ensures the function doesn't panic and we can load a config
         assert_eq!(config.editor_command, "vim");
         assert_eq!(config.cache_ttl_seconds, 1800);
     }
