@@ -1,3 +1,7 @@
+# sw - A fast project switcher for developers
+
+A fast project switcher for developers
+
 ## Quick Start
 This is a Rust project switcher tool. Use [justfile](mdc:justfile) for common development tasks:
 
@@ -10,18 +14,44 @@ just dev      # Development mode with cargo watch
 
 ## Installation
 
-### Install from Source
+### From source
+
 ```bash
-# Clone the repository
-git clone <repository-url>
-cd switchr
-
-# Install binary and shell completions for your current shell
-just install
-
-# Uninstall
-just uninstall
+cargo install --path .
 ```
+
+## Development
+
+```bash
+# Run tests
+just test
+
+# Build and check
+just check
+
+# Run in development mode
+just dev
+```
+
+## Release
+
+To create a new release:
+
+```bash
+just release
+```
+
+This will:
+- Ensure you're on the main branch
+- Pull latest changes
+- Create/update the release branch
+- Trigger GitHub Actions to build cross-platform binaries
+- Auto-increment version and publish to GitHub Releases
+- Update Homebrew tap for easy installation
+
+Monitor the release at: https://github.com/2mawi2/switchr/actions
+
+## Usage
 
 ### Manual Installation Steps
 ```bash

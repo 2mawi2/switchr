@@ -1,0 +1,240 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - 'release'
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force a release even when not on release branch'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release Binaries
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: sw-macos-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: sw-macos-aarch64
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: sw-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: sw-linux-aarch64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: sw-windows-x86_64.exe
+    runs-on: ${{ matrix.os }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      
+      - name: Set up Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      
+      - name: Run Tests
+        run: cargo test --verbose
+      
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+      
+      - name: Extract current version
+        id: version
+        shell: bash
+        run: |
+          # Extract current version from Cargo.toml
+          CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Build binary
+        run: |
+          mkdir -p artifacts
+          cargo build --release --target ${{ matrix.target }}
+          
+          # Copy binary to artifacts with target-specific name
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp target/${{ matrix.target }}/release/sw.exe artifacts/${{ matrix.name }}
+          else
+            cp target/${{ matrix.target }}/release/sw artifacts/${{ matrix.name }}
+          fi
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          cd artifacts
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            shasum -a 256 * > checksums-${{ matrix.target }}.txt
+          elif [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            certutil -hashfile ${{ matrix.name }} SHA256 | findstr -v "hash" | findstr -v "SHA256" > checksums-${{ matrix.target }}.txt
+          else
+            sha256sum * > checksums-${{ matrix.target }}.txt
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: artifacts/*
+
+  create-release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p final-artifacts
+          # Flatten artifact directories
+          find release-artifacts -type f -exec cp {} final-artifacts/ \;
+          
+          # Create a combined checksums file
+          cd final-artifacts
+          cat checksums-*.txt > checksums.txt
+          rm checksums-*.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: Release ${{ needs.build.outputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            final-artifacts/*
+            LICENSE
+            README.md
+
+  update-homebrew:
+    needs: [build, create-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout homebrew tap repository
+        uses: actions/checkout@v4
+        with:
+          repository: 2mawi2/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+          
+      - name: Download release tarball and calculate SHA
+        run: |
+          curl -L https://github.com/2mawi2/switchr/archive/refs/tags/${{ needs.build.outputs.tag }}.tar.gz -o switchr.tar.gz
+          SHA256=$(sha256sum switchr.tar.gz | awk '{print $1}')
+          echo "SHA256=$SHA256" >> $GITHUB_ENV
+          
+      - name: Update formula
+        run: |
+          cat > homebrew-tap/Formula/sw.rb << EOL
+          class Sw < Formula
+            desc "A fast project switcher for developers"
+            homepage "https://github.com/2mawi2/switchr"
+            url "https://github.com/2mawi2/switchr/archive/refs/tags/${{ needs.build.outputs.tag }}.tar.gz"
+            sha256 "${SHA256}"
+            license "MIT"
+          
+            depends_on "rust" => :build
+          
+            def install
+              system "cargo", "install", *std_cargo_args
+            end
+          
+            test do
+              assert_match "sw", shell_output("#{bin}/sw --version")
+            end
+          end
+          EOL
+          
+      - name: Commit and push updated formula
+        run: |
+          cd homebrew-tap
+          git config user.name "GitHub Action"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/sw.rb
+          # Only commit and push if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to Homebrew formula, already up-to-date."
+          else
+            git commit -m "Update sw to ${{ needs.build.outputs.version }}"
+            git push
+          fi
+
+  increment-version:
+    needs: [build, create-release, update-homebrew]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/release' || github.event.inputs.force_release == 'true'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: release
+          
+      - name: Set up Git
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      
+      - name: Increment Version on release branch
+        run: |
+          # Get current version from the output
+          CURRENT_VERSION=${{ needs.build.outputs.version }}
+          
+          # Parse the version
+          IFS='.' read -ra VER_PARTS <<< "$CURRENT_VERSION"
+          MAJOR=${VER_PARTS[0]}
+          MINOR=${VER_PARTS[1]}
+          PATCH=$((${VER_PARTS[2]}+1))
+          
+          # Create new version
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+          
+          # Update Cargo.toml with new version
+          sed -i "s/^version = \".*\"/version = \"$NEW_VERSION\"/" Cargo.toml
+          
+          # Stage and commit the updated file on release branch
+          git add Cargo.toml
+          git commit -m "Bump version to $NEW_VERSION"
+          git push origin release
+      
+      - name: Merge release to main
+        run: |
+          git fetch origin main:main
+          git checkout main
+          git merge --no-ff -m "Merge release branch with version bump" release
+          git push origin main
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
