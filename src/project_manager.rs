@@ -49,4 +49,4 @@ pub fn get_projects_fresh(config: &Config, verbose: bool) -> Result<ProjectList>
     }
 
     Ok(project_list)
-} 
+}

@@ -176,9 +176,7 @@ fn test_refresh_subcommand() {
 
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains(
-            "Cache refreshed! Found",
-        ));
+        .stdout(predicate::str::contains("Cache refreshed! Found"));
 }
 
 #[test]
@@ -218,9 +216,7 @@ fn test_subcommand_with_flags() {
         .stdout(predicate::str::contains(
             "Running sw with verbose output enabled",
         ))
-        .stdout(predicate::str::contains(
-            "Cache refreshed! Found",
-        ));
+        .stdout(predicate::str::contains("Cache refreshed! Found"));
 }
 
 #[test]

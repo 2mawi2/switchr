@@ -223,6 +223,7 @@ impl Cache {
         })
     }
 
+    #[allow(dead_code)]
     pub fn invalidate_all(&self) -> Result<()> {
         let paths = [self.projects_cache_path(), self.github_cache_path()];
 
