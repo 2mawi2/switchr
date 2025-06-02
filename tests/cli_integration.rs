@@ -310,6 +310,7 @@ fn test_config_should_prompt_github_setup() {
         editor_command: "vim".to_string(),
         project_dirs: vec![],
         github_username: None,
+        gitlab_username: None,
         cache_ttl_seconds: 1800,
     };
     assert!(config_without_github.should_prompt_github_setup());
@@ -318,6 +319,7 @@ fn test_config_should_prompt_github_setup() {
         editor_command: "vim".to_string(),
         project_dirs: vec![],
         github_username: Some("testuser".to_string()),
+        gitlab_username: None,
         cache_ttl_seconds: 1800,
     };
     assert!(!config_with_github.should_prompt_github_setup());
@@ -331,6 +333,7 @@ fn test_github_setup_prompting_logic() {
         editor_command: "vim".to_string(),
         project_dirs: vec![],
         github_username: None,
+        gitlab_username: None,
         cache_ttl_seconds: 1800,
     };
     assert!(config_without_github.should_prompt_github_setup());
@@ -339,6 +342,7 @@ fn test_github_setup_prompting_logic() {
         editor_command: "vim".to_string(),
         project_dirs: vec![],
         github_username: Some("testuser".to_string()),
+        gitlab_username: None,
         cache_ttl_seconds: 1800,
     };
     assert!(!config_with_github.should_prompt_github_setup());

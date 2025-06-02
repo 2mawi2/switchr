@@ -6,6 +6,7 @@ use std::thread;
 
 pub mod cursor;
 pub mod github;
+pub mod gitlab;
 pub mod local;
 
 pub trait ProjectScanner: Send + Sync {
@@ -25,6 +26,7 @@ impl ScanManager {
                 Box::new(local::LocalScanner),
                 Box::new(cursor::CursorScanner),
                 Box::new(github::GitHubScanner),
+                Box::new(gitlab::GitLabScanner),
             ],
         }
     }
@@ -60,6 +62,7 @@ impl ScanManager {
                     "local" => local::LocalScanner.scan(&config_clone),
                     "cursor" => cursor::CursorScanner.scan(&config_clone),
                     "github" => github::GitHubScanner.scan(&config_clone),
+                    "gitlab" => gitlab::GitLabScanner.scan(&config_clone),
                     _ => Ok(ProjectList::new()),
                 };
 
@@ -73,7 +76,7 @@ impl ScanManager {
         if self
             .scanners
             .iter()
-            .any(|s| !matches!(s.scanner_name(), "local" | "cursor" | "github"))
+            .any(|s| !matches!(s.scanner_name(), "local" | "cursor" | "github" | "gitlab"))
         {
             return self.scan_all_sequential(&config, verbose);
         }

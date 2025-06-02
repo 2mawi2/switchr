@@ -6,21 +6,13 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
-    pub editor_command: String,
-
-    pub project_dirs: Vec<PathBuf>,
-
-    pub github_username: Option<String>,
-
-    pub cache_ttl_seconds: u64,
-}
-
-impl Default for Config {
+    lt for Config {
     fn default() -> Self {
         Self {
             editor_command: detect_default_editor(),
             project_dirs: default_project_dirs(),
             github_username: None,
+            gitlab_username: None,
             cache_ttl_seconds: 1800,
         }
     }
@@ -216,6 +208,7 @@ mod tests {
         assert!(!config.project_dirs.is_empty());
         assert_eq!(config.cache_ttl_seconds, 1800);
         assert!(config.github_username.is_none());
+        assert!(config.gitlab_username.is_none());
     }
 
     #[test]
@@ -224,6 +217,7 @@ mod tests {
             editor_command: "cursor".to_string(),
             project_dirs: vec![PathBuf::from("/home/user/projects")],
             github_username: Some("testuser".to_string()),
+            gitlab_username: Some("testuser".to_string()),
             cache_ttl_seconds: 600,
         };
 
@@ -242,6 +236,7 @@ mod tests {
             editor_command: "test-editor".to_string(),
             project_dirs: vec![PathBuf::from("/test/path")],
             github_username: Some("testuser".to_string()),
+            gitlab_username: Some("testuser".to_string()),
             cache_ttl_seconds: 900,
         };
 
@@ -318,11 +313,12 @@ mod tests {
     fn test_config_with_invalid_json() {
         use std::io::Write;
         use tempfile::NamedTempFile;
+        
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, "invalid json").unwrap();
+        let temp_path = temp_file.path();
 
-        let mut file = NamedTempFile::new().unwrap();
-        writeln!(file, "invalid json content").unwrap();
-
-        let result = Config::load_from_path(file.path());
+        let result = Config::load_from_path(temp_path);
         assert!(result.is_err());
     }
 
@@ -346,7 +342,7 @@ mod tests {
         use tempfile::NamedTempFile;
 
         let mut temp_file = NamedTempFile::new().unwrap();
-        writeln!(temp_file, r#"{{"editor_command": "vim", "project_dirs": [], "github_username": null, "cache_ttl_seconds": 1800}}"#).unwrap();
+        writeln!(temp_file, r#"{{"editor_command": "vim", "project_dirs": [], "github_username": null, "gitlab_username": null, "cache_ttl_seconds": 1800}}"#).unwrap();
         let temp_path = temp_file.path();
 
         let config = Config::load_from_path(temp_path).unwrap();
@@ -360,6 +356,7 @@ mod tests {
             editor_command: "vim".to_string(),
             project_dirs: vec![],
             github_username: None,
+            gitlab_username: None,
             cache_ttl_seconds: 1800,
         };
         assert!(config_without_github.should_prompt_github_setup());
@@ -368,8 +365,39 @@ mod tests {
             editor_command: "vim".to_string(),
             project_dirs: vec![],
             github_username: Some("testuser".to_string()),
+            gitlab_username: None,
             cache_ttl_seconds: 1800,
         };
         assert!(!config_with_github.should_prompt_github_setup());
+    }
+
+    #[test]
+    fn test_gitlab_configuration() {
+        let config = Config {
+            editor_command: "code".to_string(),
+            project_dirs: vec![PathBuf::from("/projects")],
+            github_username: None,
+            gitlab_username: Some("gitlab_user".to_string()),
+            cache_ttl_seconds: 1800,
+        };
+
+        assert_eq!(config.gitlab_username, Some("gitlab_user".to_string()));
+    }
+
+    #[test]
+    fn test_gitlab_serialization() {
+        let config = Config {
+            editor_command: "vim".to_string(),
+            project_dirs: vec![PathBuf::from("/test")],
+            github_username: Some("gh_user".to_string()),
+            gitlab_username: Some("gl_user".to_string()),
+            cache_ttl_seconds: 3600,
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: Config = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(config, deserialized);
+        assert_eq!(deserialized.gitlab_username, Some("gl_user".to_string()));
     }
 }

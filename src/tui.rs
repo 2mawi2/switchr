@@ -39,6 +39,7 @@ pub struct TuiApp {
     project_exists_cache: Vec<bool>,
 
     github_status_cache: String,
+    gitlab_status_cache: String,
 }
 
 impl TuiApp {
@@ -48,7 +49,20 @@ impl TuiApp {
             .map(|project| project.path.exists())
             .collect();
 
-        let github_status_cache = Self::compute_github_status(&projects);
+        
+        let projects_clone = projects.clone();
+        let github_thread = std::thread::spawn(move || {
+            Self::compute_github_status(&projects_clone)
+        });
+
+        let projects_clone = projects.clone();
+        let gitlab_thread = std::thread::spawn(move || {
+            Self::compute_gitlab_status(&projects_clone)
+        });
+
+        
+        let github_status_cache = github_thread.join().unwrap_or_else(|_| "error".to_string());
+        let gitlab_status_cache = gitlab_thread.join().unwrap_or_else(|_| "error".to_string());
 
         let mut app = Self {
             input: String::new(),
@@ -60,6 +74,7 @@ impl TuiApp {
             projects,
             project_exists_cache,
             github_status_cache,
+            gitlab_status_cache,
         };
         app.update_filtered_projects();
         app
@@ -172,6 +187,10 @@ impl TuiApp {
         &self.github_status_cache
     }
 
+    fn get_gitlab_status(&self) -> &str {
+        &self.gitlab_status_cache
+    }
+
     fn compute_github_status(projects: &[Project]) -> String {
         let has_github_projects = projects
             .iter()
@@ -189,6 +208,26 @@ impl TuiApp {
             Ok(true) => "✅ authenticated".to_string(),
             Ok(false) => "❌ not authenticated".to_string(),
             Err(_) => "❌ error checking auth".to_string(),
+        }
+    }
+
+    fn compute_gitlab_status(projects: &[Project]) -> String {
+        let has_gitlab_projects = projects
+            .iter()
+            .any(|p| p.source == crate::models::ProjectSource::GitLab);
+
+        if !has_gitlab_projects {
+            return "not configured".to_string();
+        }
+
+        if !crate::scanner::gitlab::is_glab_installed() {
+            return "CLI not found".to_string();
+        }
+
+        if crate::scanner::gitlab::is_glab_accessible() {
+            "✅ accessible".to_string()
+        } else {
+            "❌ not accessible".to_string()
         }
     }
 
@@ -277,9 +316,10 @@ impl TuiApp {
                     crate::models::ProjectSource::Local => ("📂", SUCCESS_COLOR, "Local"),
                     crate::models::ProjectSource::Cursor => ("🎯", PRIMARY_COLOR, "Cursor"),
                     crate::models::ProjectSource::GitHub => ("🐙", SECONDARY_COLOR, "GitHub"),
+                    crate::models::ProjectSource::GitLab => ("🦊", ACCENT_COLOR, "GitLab"),
                 };
 
-                let status_indicator = if project.source == crate::models::ProjectSource::GitHub {
+                let status_indicator = if project.source == crate::models::ProjectSource::GitHub || project.source == crate::models::ProjectSource::GitLab {
                     if self.project_exists_cache[*project_index] {
                         ("✓", SUCCESS_COLOR, "Cloned")
                     } else {
@@ -382,9 +422,21 @@ impl TuiApp {
             WARNING_COLOR
         };
 
+        let gitlab_status = self.get_gitlab_status();
+        let gitlab_status_color = if gitlab_status.contains("✅") {
+            SUCCESS_COLOR
+        } else if gitlab_status.contains("❌") {
+            ERROR_COLOR
+        } else {
+            WARNING_COLOR
+        };
+
         let status_content = Text::from(vec![Line::from(vec![
             Span::styled("🐙 GitHub: ", Style::default().fg(TEXT_SECONDARY)),
             Span::styled(github_status, Style::default().fg(github_status_color)),
+            Span::styled("  │  ", Style::default().fg(TEXT_MUTED)),
+            Span::styled("🦊 GitLab: ", Style::default().fg(TEXT_SECONDARY)),
+            Span::styled(gitlab_status, Style::default().fg(gitlab_status_color)),
             Span::styled("  │  ", Style::default().fg(TEXT_MUTED)),
             Span::styled("📊 Total: ", Style::default().fg(TEXT_SECONDARY)),
             Span::styled(
@@ -490,6 +542,7 @@ mod tests {
                 source: ProjectSource::Local,
                 last_modified: Some(Utc::now()),
                 github_url: None,
+                gitlab_url: None,
             },
             Project {
                 name: "cool-app".to_string(),
@@ -497,6 +550,7 @@ mod tests {
                 source: ProjectSource::Local,
                 last_modified: Some(Utc::now()),
                 github_url: None,
+                gitlab_url: None,
             },
             Project {
                 name: "my-website".to_string(),
@@ -504,6 +558,7 @@ mod tests {
                 source: ProjectSource::Local,
                 last_modified: Some(Utc::now()),
                 github_url: None,
+                gitlab_url: None,
             },
             Project {
                 name: "switchr".to_string(),
@@ -511,6 +566,7 @@ mod tests {
                 source: ProjectSource::Local,
                 last_modified: Some(Utc::now()),
                 github_url: None,
+                gitlab_url: None,
             },
         ]
     }
@@ -672,6 +728,7 @@ mod tests {
                 source: ProjectSource::Local,
                 last_modified: Some(Utc::now()),
                 github_url: None,
+                gitlab_url: None,
             });
         }
 

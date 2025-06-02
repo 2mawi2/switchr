@@ -139,47 +139,7 @@ fn main() -> Result<()> {
 
     match cli.operation_mode() {
         OperationMode::Setup => handle_setup_wizard(&config, cli.verbose),
-        OperationMode::ShowConfig => {
-            println!("Configuration:");
-            println!("  Editor: {}", config.editor_command);
-            println!("  Project directories:");
-            for dir in &config.project_dirs {
-                println!("    {}", dir.display());
-            }
-            println!("  Cache TTL: {} seconds", config.cache_ttl_seconds);
-
-            if let Some(ref username) = config.github_username {
-                println!("  GitHub username: {}", username);
-
-                if scanner::github::is_gh_installed() {
-                    match scanner::github::is_gh_authenticated() {
-                        Ok(true) => println!("  GitHub status: ✅ Authenticated"),
-                        Ok(false) => println!("  GitHub status: ❌ Not authenticated"),
-                        Err(e) => println!("  GitHub status: ⚠️  Error checking status: {}", e),
-                    }
-                } else {
-                    println!("  GitHub status: ⚠️  GitHub CLI not installed");
-                }
-            } else if scanner::github::is_gh_installed() {
-                match scanner::github::is_gh_authenticated() {
-                    Ok(true) => {
-                        println!("  GitHub: ⚠️  Authenticated but not configured");
-                        println!("    💡 Run 'sw setup' to enable GitHub integration");
-                    }
-                    Ok(false) => {
-                        println!("  GitHub: ❌ Not configured");
-                    }
-                    Err(e) => {
-                        println!("  GitHub: ❌ Not configured (error checking auth: {})", e);
-                    }
-                }
-            } else {
-                println!("  GitHub: ❌ Not configured");
-                println!("  GitHub CLI: ❌ Not installed");
-            }
-
-            Ok(())
-        }
+        OperationMode::ShowConfig => handle_show_config(&config, cli.verbose),
         OperationMode::List => list_projects(&config, cli.verbose),
         OperationMode::Interactive => handle_interactive_mode(&config, cli.verbose),
         OperationMode::Fzf => handle_fzf_mode(&config, cli.verbose),
@@ -457,6 +417,7 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
                 models::ProjectSource::Local => "📁",
                 models::ProjectSource::Cursor => "🎯",
                 models::ProjectSource::GitHub => "🐙",
+                models::ProjectSource::GitLab => "🦊",
             };
 
             let time_str = if let Some(timestamp) = project.last_modified {
@@ -607,6 +568,7 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
             editor_command,
             project_dirs,
             github_username: None,
+            gitlab_username: None,
             cache_ttl_seconds: config.cache_ttl_seconds,
         };
 
@@ -642,6 +604,7 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
             editor_command,
             project_dirs,
             github_username: github_username.clone(),
+            gitlab_username: None,
             cache_ttl_seconds: config.cache_ttl_seconds,
         };
 
@@ -697,6 +660,7 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
             editor_command,
             project_dirs,
             github_username: github_username.clone(),
+            gitlab_username: None,
             cache_ttl_seconds: config.cache_ttl_seconds,
         };
 
@@ -707,10 +671,68 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         config
     };
 
-    new_config.save().context("Failed to save configuration")?;
+    
+    println!("\n🦊 GitLab configuration:");
+
+    let gitlab_username = if which::which("glab").is_err() {
+        println!("⚠️  GitLab CLI (glab) is not installed.");
+        println!("To enable GitLab repository discovery, please install it with:");
+        println!("  brew install glab");
+
+        let skip_gitlab = Confirm::new()
+            .with_prompt("Continue without GitLab integration?")
+            .default(true)
+            .interact()
+            .context("Failed to get GitLab skip confirmation")?;
+
+        if !skip_gitlab {
+            println!("Please install GitLab CLI and run setup again.");
+            return Ok(());
+        }
+
+        None
+    } else {
+        let setup_gitlab = Confirm::new()
+            .with_prompt("Would you like to configure GitLab integration?")
+            .default(false)
+            .interact()
+            .context("Failed to get GitLab setup confirmation")?;
+
+        if setup_gitlab {
+            let gitlab_username_input: String = Input::new()
+                .with_prompt("GitLab username")
+                .allow_empty(true)
+                .interact()
+                .context("Failed to get GitLab username input")?;
+
+            let username = if gitlab_username_input.trim().is_empty() {
+                None
+            } else {
+                Some(gitlab_username_input.trim().to_string())
+            };
+
+            if username.is_some() {
+                println!("🦊 GitLab integration enabled for user '{}'", username.as_ref().unwrap());
+            }
+
+            username
+        } else {
+            None
+        }
+    };
+
+    let final_config = Config {
+        editor_command: new_config.editor_command,
+        project_dirs: new_config.project_dirs,
+        github_username: new_config.github_username,
+        gitlab_username,
+        cache_ttl_seconds: new_config.cache_ttl_seconds,
+    };
+
+    final_config.save().context("Failed to save configuration")?;
     println!("\n✅ Configuration saved successfully!");
 
-    if let Err(e) = new_config.validate() {
+    if let Err(e) = final_config.validate() {
         println!("⚠️  Configuration validation failed: {}", e);
         let continue_anyway = Confirm::new()
             .with_prompt("Save configuration anyway?")
@@ -728,18 +750,81 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
 
     if verbose {
         println!("\nNew configuration:");
-        println!("  Editor: {}", new_config.editor_command);
+        println!("  Editor: {}", final_config.editor_command);
         println!(
             "  Project directories: {} entries",
-            new_config.project_dirs.len()
+            final_config.project_dirs.len()
         );
-        if let Some(ref username) = new_config.github_username {
+        if let Some(ref username) = final_config.github_username {
             println!("  GitHub username: {}", username);
         }
     }
 
     println!("\n🎉 Setup complete! You can now use 'sw' to switch between projects.");
     println!("Try running 'sw --list' to see your projects.");
+
+    Ok(())
+}
+
+fn handle_show_config(config: &Config, _verbose: bool) -> Result<()> {
+    println!("Configuration:");
+    println!("  Editor: {}", config.editor_command);
+    println!("  Project directories:");
+    for dir in &config.project_dirs {
+        println!("    {}", dir.display());
+    }
+    println!("  Cache TTL: {} seconds", config.cache_ttl_seconds);
+
+    if let Some(ref username) = config.github_username {
+        println!("  GitHub username: {}", username);
+
+        if scanner::github::is_gh_installed() {
+            match scanner::github::is_gh_authenticated() {
+                Ok(true) => println!("  GitHub status: ✅ Authenticated"),
+                Ok(false) => println!("  GitHub status: ❌ Not authenticated"),
+                Err(e) => println!("  GitHub status: ⚠️  Error checking status: {}", e),
+            }
+        } else {
+            println!("  GitHub status: ⚠️  GitHub CLI not installed");
+        }
+    } else if scanner::github::is_gh_installed() {
+        match scanner::github::is_gh_authenticated() {
+            Ok(true) => {
+                println!("  GitHub: ⚠️  Authenticated but not configured");
+                println!("    💡 Run 'sw setup' to enable GitHub integration");
+            }
+            Ok(false) => {
+                println!("  GitHub: ❌ Not configured");
+            }
+            Err(e) => {
+                println!("  GitHub: ❌ Not configured (error checking auth: {})", e);
+            }
+        }
+    } else {
+        println!("  GitHub: ❌ Not configured");
+        println!("  GitHub CLI: ❌ Not installed");
+    }
+
+    
+    if let Some(ref username) = config.gitlab_username {
+        println!("  GitLab username: {}", username);
+
+        if scanner::gitlab::is_glab_installed() {
+            if scanner::gitlab::is_glab_accessible() {
+                println!("  GitLab status: ✅ Accessible");
+            } else {
+                println!("  GitLab status: ❌ Not accessible (check VPN/auth)");
+            }
+        } else {
+            println!("  GitLab status: ⚠️  GitLab CLI not installed");
+        }
+    } else if scanner::gitlab::is_glab_installed() {
+        println!("  GitLab: ❌ Not configured");
+        println!("    💡 Run 'sw setup' to enable GitLab integration");
+    } else {
+        println!("  GitLab: ❌ Not configured");
+        println!("  GitLab CLI: ❌ Not installed");
+    }
 
     Ok(())
 }
