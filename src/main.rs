@@ -1,20 +1,19 @@
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
+use config::Config;
+use opener::ProjectOpener;
+use tui::run_interactive_mode;
 use std::io;
 
 mod cache;
 mod config;
 mod models;
 mod opener;
+mod project_manager;
 mod scanner;
 mod tui;
 
-use cache::Cache;
-use config::Config;
-use opener::ProjectOpener;
-use scanner::ScanManager;
-use tui::run_interactive_mode;
 
 #[derive(Parser)]
 #[command(name = "sw")]
@@ -152,52 +151,7 @@ fn main() -> Result<()> {
 }
 
 fn list_projects(config: &Config, verbose: bool) -> Result<()> {
-    let cache = Cache::new(config)?;
-    let scan_manager = ScanManager::new();
-
-    let cached_projects = cache.load_projects()?;
-    let should_scan =
-        cached_projects.is_none() || !cache.is_cache_valid(cache.projects_cache_path());
-
-    if let Some(ref cached) = cached_projects {
-        if !should_scan {
-            if verbose {
-                println!("Using cached projects");
-            }
-
-            if cached.is_empty() {
-                println!("No projects found in configured directories:");
-                for dir in &config.project_dirs {
-                    println!("  {}", dir.display());
-                }
-                return Ok(());
-            }
-
-            println!("Found {} project(s):", cached.len());
-            for project in cached.projects() {
-                println!("  {}", project.display_string());
-            }
-            return Ok(());
-        } else if verbose {
-            println!("Cache is stale, refreshing...");
-        }
-    } else if verbose {
-        println!("Cache miss, scanning for projects...");
-    }
-
-    let scan_start = std::time::Instant::now();
-    let project_list = scan_manager.scan_all_verbose(config, verbose)?;
-    let scan_duration = scan_start.elapsed();
-
-    cache.save_projects(&project_list)?;
-
-    if verbose {
-        println!(
-            "Found {} projects in {:.2?}",
-            project_list.len(),
-            scan_duration
-        );
-    }
+    let project_list = project_manager::get_projects_with_cache(config, verbose)?;
 
     if project_list.is_empty() {
         println!("No projects found in configured directories:");
@@ -216,43 +170,23 @@ fn list_projects(config: &Config, verbose: bool) -> Result<()> {
 }
 
 fn refresh_cache(config: &Config, verbose: bool) -> Result<()> {
-    let cache = Cache::new(config)?;
-
     if verbose {
-        println!("Invalidating cache...");
+        println!("Refreshing project cache...");
     }
 
-    cache.invalidate_all()?;
+    let project_list = project_manager::get_projects_fresh(config, verbose)?;
 
-    if verbose {
-        println!("Cache invalidated. Next scan will rebuild from scratch.");
-    } else {
-        println!("Cache refreshed");
-    }
-
+    println!("Cache refreshed! Found {} projects.", project_list.len());
     Ok(())
 }
 
 fn open_project_by_name(project_name: &str, config: &Config, verbose: bool) -> Result<()> {
-    let cache = Cache::new(config)?;
-    let scan_manager = ScanManager::new();
     let opener = ProjectOpener::new();
 
-    let projects = if let Some(cached_projects) = cache.load_projects()? {
-        if verbose {
-            println!("Searching in cached projects");
-        }
-        cached_projects.projects().to_vec()
-    } else {
-        if verbose {
-            println!("No cached projects found, scanning...");
-        }
-        let project_list = scan_manager.scan_all_verbose(config, verbose)?;
-        cache.save_projects(&project_list)?;
-        project_list.projects().to_vec()
-    };
+    let projects = project_manager::get_projects_with_cache(config, verbose)?;
 
     let matching_project = projects
+        .projects()
         .iter()
         .find(|p| p.name.to_lowercase().contains(&project_name.to_lowercase()))
         .cloned();
@@ -268,72 +202,42 @@ fn open_project_by_name(project_name: &str, config: &Config, verbose: bool) -> R
 
         opener.open_project(&project, config)?;
         println!("Opened project: {}", project.name);
-
-        if !cache.is_cache_valid(cache.projects_cache_path()) && verbose {
-            println!("Refreshing project cache in background...");
-        }
     } else {
-        if !cache.is_cache_valid(cache.projects_cache_path()) {
-            if verbose {
-                println!("Project not found in cache, trying fresh scan...");
-            }
-            let fresh_projects = scan_manager.scan_all_verbose(config, verbose)?;
-            cache.save_projects(&fresh_projects)?;
-
-            let fresh_matching = fresh_projects
-                .projects()
-                .iter()
-                .find(|p| p.name.to_lowercase().contains(&project_name.to_lowercase()))
-                .cloned();
-
-            if let Some(project) = fresh_matching {
-                if verbose {
-                    println!(
-                        "Found project in fresh scan: {} at {}",
-                        project.name,
-                        project.path.display()
-                    );
-                }
-                opener.open_project(&project, config)?;
-                println!("Opened project: {}", project.name);
-                return Ok(());
-            }
+        // Try fresh scan if not found in cache
+        if verbose {
+            println!("Project not found in cache, trying fresh scan...");
         }
+        let fresh_projects = project_manager::get_projects_fresh(config, verbose)?;
 
-        println!("No project found matching '{}'", project_name);
-        std::process::exit(1);
+        let fresh_matching = fresh_projects
+            .projects()
+            .iter()
+            .find(|p| p.name.to_lowercase().contains(&project_name.to_lowercase()))
+            .cloned();
+
+        if let Some(project) = fresh_matching {
+            if verbose {
+                println!(
+                    "Found project in fresh scan: {} at {}",
+                    project.name,
+                    project.path.display()
+                );
+            }
+            opener.open_project(&project, config)?;
+            println!("Opened project: {}", project.name);
+        } else {
+            println!("No project found matching '{}'", project_name);
+            std::process::exit(1);
+        }
     }
 
     Ok(())
 }
 
 fn handle_interactive_mode(config: &Config, verbose: bool) -> Result<()> {
-    let cache = Cache::new(config)?;
-    let scan_manager = ScanManager::new();
     let opener = ProjectOpener::new();
 
-    let mut projects = if let Some(cached_projects) = cache.load_projects()? {
-        if verbose {
-            println!("Starting with cached projects");
-        }
-        cached_projects.projects().to_vec()
-    } else {
-        if verbose {
-            println!("No cached projects found, scanning...");
-        }
-        let project_list = scan_manager.scan_all_verbose(config, verbose)?;
-        cache.save_projects(&project_list)?;
-        project_list.projects().to_vec()
-    };
-
-    if !cache.is_cache_valid(cache.projects_cache_path()) {
-        if verbose {
-            println!("Cache is stale, refreshing...");
-        }
-        let fresh_projects = scan_manager.scan_all_verbose(config, verbose)?;
-        cache.save_projects(&fresh_projects)?;
-        projects = fresh_projects.projects().to_vec();
-    }
+    let projects = project_manager::get_projects_with_cache(config, verbose)?;
 
     if projects.is_empty() {
         println!(
@@ -346,7 +250,7 @@ fn handle_interactive_mode(config: &Config, verbose: bool) -> Result<()> {
         println!("Starting interactive mode with {} projects", projects.len());
     }
 
-    if let Some(selected_project) = run_interactive_mode(projects)? {
+    if let Some(selected_project) = run_interactive_mode(projects.projects().to_vec())? {
         if verbose {
             println!(
                 "Selected project: {} at {}",
@@ -372,32 +276,9 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
         anyhow::bail!("fzf binary not found. Please install fzf to use this mode.");
     }
 
-    let cache = Cache::new(config)?;
-    let scan_manager = ScanManager::new();
     let opener = ProjectOpener::new();
 
-    let mut projects = if let Some(cached_projects) = cache.load_projects()? {
-        if verbose {
-            println!("Using cached projects for fzf");
-        }
-        cached_projects.projects().to_vec()
-    } else {
-        if verbose {
-            println!("No cached projects found, scanning...");
-        }
-        let project_list = scan_manager.scan_all_verbose(config, verbose)?;
-        cache.save_projects(&project_list)?;
-        project_list.projects().to_vec()
-    };
-
-    if !cache.is_cache_valid(cache.projects_cache_path()) {
-        if verbose {
-            println!("Refreshing project list...");
-        }
-        let fresh_projects = scan_manager.scan_all_verbose(config, verbose)?;
-        cache.save_projects(&fresh_projects)?;
-        projects = fresh_projects.projects().to_vec();
-    }
+    let projects = project_manager::get_projects_with_cache(config, verbose)?;
 
     if projects.is_empty() {
         println!(
@@ -411,6 +292,7 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
     }
 
     let project_lines: Vec<String> = projects
+        .projects()
         .iter()
         .map(|project| {
             let source_indicator = match project.source {
@@ -471,6 +353,7 @@ fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
     }
 
     let selected_project = projects
+        .projects()
         .iter()
         .zip(project_lines.iter())
         .find(|(_, line)| **line == selected_line)
