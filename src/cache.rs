@@ -70,7 +70,10 @@ impl Cache {
         let data = fs::read(&cache_path)
             .with_context(|| format!("Failed to read cache file: {}", cache_path.display()))?;
 
-        match bincode::serde::decode_from_slice::<Vec<crate::models::Project>, _>(&data, bincode::config::standard()) {
+        match bincode::serde::decode_from_slice::<Vec<crate::models::Project>, _>(
+            &data,
+            bincode::config::standard(),
+        ) {
             Ok((projects, _)) => Ok(Some(ProjectList::from_projects(projects))),
             Err(_) => {
                 // Cache is corrupted, invalidate it and return None to trigger fresh scan
@@ -174,12 +177,18 @@ impl Cache {
         let data = fs::read(&cache_path)
             .with_context(|| format!("Failed to read GitHub cache: {}", cache_path.display()))?;
 
-        match bincode::serde::decode_from_slice::<Vec<crate::models::Project>, _>(&data, bincode::config::standard()) {
+        match bincode::serde::decode_from_slice::<Vec<crate::models::Project>, _>(
+            &data,
+            bincode::config::standard(),
+        ) {
             Ok((projects, _)) => Ok(Some(ProjectList::from_projects(projects))),
             Err(_) => {
                 // Cache is corrupted, invalidate it and return None to trigger fresh scan
                 if let Err(e) = fs::remove_file(&cache_path) {
-                    eprintln!("Warning: Failed to remove corrupted GitHub cache file: {}", e);
+                    eprintln!(
+                        "Warning: Failed to remove corrupted GitHub cache file: {}",
+                        e
+                    );
                 }
                 Ok(None)
             }
@@ -456,18 +465,22 @@ mod tests {
         };
 
         let cache_path = cache.projects_cache_path();
-        
+
         // Create a corrupted cache file with invalid data
         fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
-        fs::write(&cache_path, b"invalid corrupted data that cannot be deserialized").unwrap();
-        
+        fs::write(
+            &cache_path,
+            b"invalid corrupted data that cannot be deserialized",
+        )
+        .unwrap();
+
         // Verify file exists
         assert!(cache_path.exists());
-        
+
         // Loading should return None (not an error) and remove the corrupted file
         let result = cache.load_projects().unwrap();
         assert!(result.is_none());
-        
+
         // Corrupted file should be removed
         assert!(!cache_path.exists());
     }
@@ -481,18 +494,22 @@ mod tests {
         };
 
         let cache_path = cache.github_cache_path();
-        
+
         // Create a corrupted cache file with invalid data
         fs::create_dir_all(cache_path.parent().unwrap()).unwrap();
-        fs::write(&cache_path, b"invalid corrupted data that cannot be deserialized").unwrap();
-        
+        fs::write(
+            &cache_path,
+            b"invalid corrupted data that cannot be deserialized",
+        )
+        .unwrap();
+
         // Verify file exists
         assert!(cache_path.exists());
-        
+
         // Loading should return None (not an error) and remove the corrupted file
         let result = cache.load_github_projects().unwrap();
         assert!(result.is_none());
-        
+
         // Corrupted file should be removed
         assert!(!cache_path.exists());
     }

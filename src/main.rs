@@ -671,7 +671,6 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         config
     };
 
-    
     println!("\n🦊 GitLab configuration:");
 
     let gitlab_username = if which::which("glab").is_err() {
@@ -712,7 +711,10 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
             };
 
             if username.is_some() {
-                println!("🦊 GitLab integration enabled for user '{}'", username.as_ref().unwrap());
+                println!(
+                    "🦊 GitLab integration enabled for user '{}'",
+                    username.as_ref().unwrap()
+                );
             }
 
             username
@@ -729,7 +731,9 @@ fn handle_setup_wizard(config: &Config, verbose: bool) -> Result<()> {
         cache_ttl_seconds: new_config.cache_ttl_seconds,
     };
 
-    final_config.save().context("Failed to save configuration")?;
+    final_config
+        .save()
+        .context("Failed to save configuration")?;
     println!("\n✅ Configuration saved successfully!");
 
     if let Err(e) = final_config.validate() {
@@ -805,7 +809,6 @@ fn handle_show_config(config: &Config, _verbose: bool) -> Result<()> {
         println!("  GitHub CLI: ❌ Not installed");
     }
 
-    
     if let Some(ref username) = config.gitlab_username {
         println!("  GitLab username: {}", username);
 

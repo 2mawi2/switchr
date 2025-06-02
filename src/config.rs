@@ -6,7 +6,19 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
-    lt for Config {
+    /// The command to use for opening projects in an editor
+    pub editor_command: String,
+    /// List of directories to scan for projects
+    pub project_dirs: Vec<PathBuf>,
+    /// GitHub username for repository discovery
+    pub github_username: Option<String>,
+    /// GitLab username for repository discovery
+    pub gitlab_username: Option<String>,
+    /// Cache time-to-live in seconds
+    pub cache_ttl_seconds: u64,
+}
+
+impl Default for Config {
     fn default() -> Self {
         Self {
             editor_command: detect_default_editor(),
@@ -313,7 +325,7 @@ mod tests {
     fn test_config_with_invalid_json() {
         use std::io::Write;
         use tempfile::NamedTempFile;
-        
+
         let mut temp_file = NamedTempFile::new().unwrap();
         writeln!(temp_file, "invalid json").unwrap();
         let temp_path = temp_file.path();

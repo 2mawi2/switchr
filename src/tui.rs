@@ -49,18 +49,14 @@ impl TuiApp {
             .map(|project| project.path.exists())
             .collect();
 
-        
         let projects_clone = projects.clone();
-        let github_thread = std::thread::spawn(move || {
-            Self::compute_github_status(&projects_clone)
-        });
+        let github_thread =
+            std::thread::spawn(move || Self::compute_github_status(&projects_clone));
 
         let projects_clone = projects.clone();
-        let gitlab_thread = std::thread::spawn(move || {
-            Self::compute_gitlab_status(&projects_clone)
-        });
+        let gitlab_thread =
+            std::thread::spawn(move || Self::compute_gitlab_status(&projects_clone));
 
-        
         let github_status_cache = github_thread.join().unwrap_or_else(|_| "error".to_string());
         let gitlab_status_cache = gitlab_thread.join().unwrap_or_else(|_| "error".to_string());
 
@@ -319,7 +315,9 @@ impl TuiApp {
                     crate::models::ProjectSource::GitLab => ("🦊", ACCENT_COLOR, "GitLab"),
                 };
 
-                let status_indicator = if project.source == crate::models::ProjectSource::GitHub || project.source == crate::models::ProjectSource::GitLab {
+                let status_indicator = if project.source == crate::models::ProjectSource::GitHub
+                    || project.source == crate::models::ProjectSource::GitLab
+                {
                     if self.project_exists_cache[*project_index] {
                         ("✓", SUCCESS_COLOR, "Cloned")
                     } else {

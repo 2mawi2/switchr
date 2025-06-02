@@ -10,7 +10,11 @@ pub enum ProjectSource {
     Cursor,
     /// Project found in GitHub repositories
     GitHub,
-    PartialEq, Eq, Serialize, Deserialize)]
+    /// Project found in GitLab repositories
+    GitLab,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Project {
     /// The project name (usually the directory name)
     pub name: String,
@@ -22,7 +26,11 @@ pub struct Project {
     pub source: ProjectSource,
     /// GitHub URL if this is a GitHub project
     pub github_url: Option<String>,
-    mpl Project {
+    /// GitLab URL if this is a GitLab project
+    pub gitlab_url: Option<String>,
+}
+
+impl Project {
     pub fn new_local<P: Into<PathBuf>>(name: String, path: P) -> Self {
         Self {
             name,
@@ -202,9 +210,12 @@ mod tests {
             "/github/path",
             "https://github.com/user/repo".to_string(),
         );
-        
+
         assert_eq!(project.source, ProjectSource::GitHub);
-        assert_eq!(project.github_url, Some("https://github.com/user/repo".to_string()));
+        assert_eq!(
+            project.github_url,
+            Some("https://github.com/user/repo".to_string())
+        );
         assert!(project.gitlab_url.is_none());
     }
 
@@ -215,11 +226,14 @@ mod tests {
             "/gitlab/path",
             "https://gitlab.example.com/user/repo".to_string(),
         );
-        
+
         assert_eq!(project.name, "gitlab-project");
         assert_eq!(project.path, PathBuf::from("/gitlab/path"));
         assert_eq!(project.source, ProjectSource::GitLab);
-        assert_eq!(project.gitlab_url, Some("https://gitlab.example.com/user/repo".to_string()));
+        assert_eq!(
+            project.gitlab_url,
+            Some("https://gitlab.example.com/user/repo".to_string())
+        );
         assert!(project.github_url.is_none());
         assert!(project.last_modified.is_none());
     }
@@ -234,35 +248,41 @@ mod tests {
 
     #[test]
     fn test_display_string() {
-        
+        // Test local project
         let local_project = Project::new_local("local-proj".to_string(), "/path/to/local");
         assert!(local_project.display_string().starts_with("📁 local-proj"));
-        
-        
+
+        // Test cursor project
         let cursor_project = Project::new_cursor("cursor-proj".to_string(), "/path/to/cursor");
-        assert!(cursor_project.display_string().starts_with("🎯 cursor-proj"));
-        
-        
+        assert!(cursor_project
+            .display_string()
+            .starts_with("🎯 cursor-proj"));
+
+        // Test GitHub project
         let github_project = Project::new_github(
             "github-proj".to_string(),
             "/path/to/github",
             "https://github.com/user/repo".to_string(),
         );
-        assert!(github_project.display_string().starts_with("🐙 github-proj"));
+        assert!(github_project
+            .display_string()
+            .starts_with("🐙 github-proj"));
 
-        
+        // Test GitLab project
         let gitlab_project = Project::new_gitlab(
             "gitlab-proj".to_string(),
             "/path/to/gitlab",
             "https://gitlab.example.com/user/repo".to_string(),
         );
-        assert!(gitlab_project.display_string().starts_with("🦊 gitlab-proj"));
-        
-        
+        assert!(gitlab_project
+            .display_string()
+            .starts_with("🦊 gitlab-proj"));
+
+        // Test with timestamp
         let timestamp = Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap();
-        let project_with_time = Project::new_local("timed-proj".to_string(), "/path")
-            .with_last_modified(timestamp);
-        
+        let project_with_time =
+            Project::new_local("timed-proj".to_string(), "/path").with_last_modified(timestamp);
+
         let display = project_with_time.display_string();
         assert!(display.contains("📁 timed-proj"));
         assert!(display.contains("(2024-01-15 10:30)"));
