@@ -136,7 +136,7 @@ impl TuiApp {
                 .iter()
                 .enumerate()
                 .map(|(i, _)| (i, 100))
-                .take(10)
+                .take(20)
                 .collect();
         } else {
             let mut scored: Vec<(usize, i64)> = self
@@ -152,7 +152,7 @@ impl TuiApp {
 
             scored.sort_by(|a, b| b.1.cmp(&a.1));
 
-            self.filtered_projects = scored.into_iter().take(10).collect();
+            self.filtered_projects = scored.into_iter().take(20).collect();
         }
 
         if self.selected_index >= self.filtered_projects.len() {
@@ -717,9 +717,9 @@ mod tests {
     }
 
     #[test]
-    fn test_shows_top_10_matches_only() {
+    fn test_shows_top_20_matches_only() {
         let mut projects = Vec::new();
-        for i in 0..15 {
+        for i in 0..25 {
             projects.push(Project {
                 name: format!("project-{:02}", i),
                 path: PathBuf::from(format!("/path/to/project-{:02}", i)),
@@ -732,6 +732,6 @@ mod tests {
 
         let app = TuiApp::new(projects);
 
-        assert_eq!(app.filtered_projects.len(), 10);
+        assert_eq!(app.filtered_projects.len(), 20);
     }
 }
