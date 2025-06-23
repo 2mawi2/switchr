@@ -22,7 +22,7 @@ crossterm = "0.29"
 
 # Fuzzy search
 fuzzy-matcher = "0.3"
-skim = { version = "0.18", optional = true }
+skim = { version = "0.20", optional = true }
 
 # Filesystem operations
 walkdir = "2.5"
