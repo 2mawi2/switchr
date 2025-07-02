@@ -3,6 +3,8 @@ use crate::config::Config;
 use crate::models::ProjectList;
 use crate::scanner::ScanManager;
 use anyhow::Result;
+use std::sync::mpsc::{channel, Receiver};
+use std::thread;
 
 /// Get projects using cache if valid, otherwise scan fresh
 pub fn get_projects_with_cache(config: &Config, verbose: bool) -> Result<ProjectList> {
@@ -49,4 +51,43 @@ pub fn get_projects_fresh(config: &Config, verbose: bool) -> Result<ProjectList>
     }
 
     Ok(project_list)
+}
+
+/// Get projects immediately from cache (even if stale) and optionally refresh in background
+pub fn get_projects_with_background_refresh(
+    config: &Config,
+    verbose: bool,
+) -> Result<(ProjectList, Option<Receiver<ProjectList>>)> {
+    let cache = Cache::new(config)?;
+
+    // Always load cached data first, even if stale
+    let cached_projects = cache.load_projects()?.unwrap_or_else(ProjectList::new);
+
+    // Check if we need to refresh
+    let needs_refresh =
+        cached_projects.is_empty() || !cache.is_cache_valid(cache.projects_cache_path());
+
+    if needs_refresh {
+        if verbose {
+            println!("Starting background refresh...");
+        }
+
+        let (tx, rx) = channel();
+        let config_clone = config.clone();
+
+        // Spawn background thread to refresh
+        thread::spawn(move || {
+            if let Ok(fresh_projects) = get_projects_fresh(&config_clone, false) {
+                // Ignore send errors (receiver might have been dropped)
+                let _ = tx.send(fresh_projects);
+            }
+        });
+
+        Ok((cached_projects, Some(rx)))
+    } else {
+        if verbose {
+            println!("Using fresh cache");
+        }
+        Ok((cached_projects, None))
+    }
 }

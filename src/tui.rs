@@ -1,4 +1,4 @@
-use crate::models::Project;
+use crate::models::{Project, ProjectList};
 use anyhow::Result;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind},
@@ -15,6 +15,7 @@ use ratatui::{
     Frame, Terminal,
 };
 use std::io;
+use std::sync::mpsc::Receiver;
 
 const PRIMARY_COLOR: Color = Color::Rgb(99, 102, 241);
 const SECONDARY_COLOR: Color = Color::Rgb(139, 92, 246);
@@ -40,10 +41,22 @@ pub struct TuiApp {
 
     github_status_cache: String,
     gitlab_status_cache: String,
+
+    // Background refresh
+    update_receiver: Option<Receiver<ProjectList>>,
+    is_refreshing: bool,
 }
 
 impl TuiApp {
+    #[allow(dead_code)]
     pub fn new(projects: Vec<Project>) -> Self {
+        Self::new_with_receiver(projects, None)
+    }
+
+    pub fn new_with_receiver(
+        projects: Vec<Project>,
+        update_receiver: Option<Receiver<ProjectList>>,
+    ) -> Self {
         let project_exists_cache: Vec<bool> = projects
             .iter()
             .map(|project| project.path.exists())
@@ -60,6 +73,8 @@ impl TuiApp {
         let github_status_cache = github_thread.join().unwrap_or_else(|_| "error".to_string());
         let gitlab_status_cache = gitlab_thread.join().unwrap_or_else(|_| "error".to_string());
 
+        let is_refreshing = update_receiver.is_some();
+
         let mut app = Self {
             input: String::new(),
             filtered_projects: Vec::new(),
@@ -71,52 +86,74 @@ impl TuiApp {
             project_exists_cache,
             github_status_cache,
             gitlab_status_cache,
+            update_receiver,
+            is_refreshing,
         };
         app.update_filtered_projects();
         app
     }
 
+    #[allow(dead_code)]
     pub fn run_interactive<B: Backend>(
         projects: Vec<Project>,
         terminal: &mut Terminal<B>,
     ) -> Result<Option<Project>> {
-        let mut app = TuiApp::new(projects);
+        Self::run_interactive_with_receiver(projects, None, terminal)
+    }
+
+    pub fn run_interactive_with_receiver<B: Backend>(
+        projects: Vec<Project>,
+        update_receiver: Option<Receiver<ProjectList>>,
+        terminal: &mut Terminal<B>,
+    ) -> Result<Option<Project>> {
+        let mut app = TuiApp::new_with_receiver(projects, update_receiver);
 
         loop {
             terminal.draw(|f| app.draw(f))?;
 
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') => {
-                            app.should_quit = true;
-                        }
-                        KeyCode::Esc => {
-                            app.should_quit = true;
-                        }
-                        KeyCode::Enter => {
-                            if let Some(project) = app.get_selected_project() {
-                                app.selected_project = Some(project);
+            // Check for background updates
+            if let Some(rx) = &app.update_receiver {
+                if let Ok(updated_projects) = rx.try_recv() {
+                    app.update_projects(updated_projects.projects().to_vec());
+                    app.is_refreshing = false;
+                }
+            }
+
+            // Poll for events with a short timeout to allow checking for updates
+            if event::poll(std::time::Duration::from_millis(50))? {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind == KeyEventKind::Press {
+                        match key.code {
+                            KeyCode::Char('q') => {
                                 app.should_quit = true;
                             }
+                            KeyCode::Esc => {
+                                app.should_quit = true;
+                            }
+                            KeyCode::Enter => {
+                                if let Some(project) = app.get_selected_project() {
+                                    app.selected_project = Some(project);
+                                    app.should_quit = true;
+                                }
+                            }
+                            KeyCode::Char(c) => {
+                                app.input.push(c);
+                                app.update_filtered_projects();
+                                app.selected_index = 0;
+                            }
+                            KeyCode::Backspace => {
+                                app.input.pop();
+                                app.update_filtered_projects();
+                                app.selected_index = 0;
+                            }
+                            KeyCode::Up => {
+                                app.move_selection_up();
+                            }
+                            KeyCode::Down => {
+                                app.move_selection_down();
+                            }
+                            _ => {}
                         }
-                        KeyCode::Char(c) => {
-                            app.input.push(c);
-                            app.update_filtered_projects();
-                            app.selected_index = 0;
-                        }
-                        KeyCode::Backspace => {
-                            app.input.pop();
-                            app.update_filtered_projects();
-                            app.selected_index = 0;
-                        }
-                        KeyCode::Up => {
-                            app.move_selection_up();
-                        }
-                        KeyCode::Down => {
-                            app.move_selection_down();
-                        }
-                        _ => {}
                     }
                 }
             }
@@ -224,6 +261,46 @@ impl TuiApp {
             "✅ accessible".to_string()
         } else {
             "❌ not accessible".to_string()
+        }
+    }
+
+    fn update_projects(&mut self, new_projects: Vec<Project>) {
+        // Save current selection state
+        let selected_project = self.get_selected_project();
+
+        // Update projects and caches
+        self.projects = new_projects;
+        self.project_exists_cache = self
+            .projects
+            .iter()
+            .map(|project| project.path.exists())
+            .collect();
+
+        // Update status caches in background
+        let projects_clone = self.projects.clone();
+        self.github_status_cache = Self::compute_github_status(&projects_clone);
+        let projects_clone = self.projects.clone();
+        self.gitlab_status_cache = Self::compute_gitlab_status(&projects_clone);
+
+        // Update filtered projects without losing search
+        self.update_filtered_projects();
+
+        // Try to restore selection
+        if let Some(prev_selected) = selected_project {
+            if let Some(new_index) = self
+                .projects
+                .iter()
+                .position(|p| p.path == prev_selected.path)
+            {
+                // Find the position in filtered projects
+                if let Some(filtered_pos) = self
+                    .filtered_projects
+                    .iter()
+                    .position(|(idx, _)| *idx == new_index)
+                {
+                    self.selected_index = filtered_pos;
+                }
+            }
         }
     }
 
@@ -429,7 +506,7 @@ impl TuiApp {
             WARNING_COLOR
         };
 
-        let status_content = Text::from(vec![Line::from(vec![
+        let mut status_spans = vec![
             Span::styled("🐙 GitHub: ", Style::default().fg(TEXT_SECONDARY)),
             Span::styled(github_status, Style::default().fg(github_status_color)),
             Span::styled("  │  ", Style::default().fg(TEXT_MUTED)),
@@ -451,7 +528,20 @@ impl TuiApp {
                     .fg(PRIMARY_COLOR)
                     .add_modifier(Modifier::BOLD),
             ),
-        ])]);
+        ];
+
+        // Add refresh indicator if refreshing
+        if self.is_refreshing {
+            status_spans.push(Span::styled("  │  ", Style::default().fg(TEXT_MUTED)));
+            status_spans.push(Span::styled(
+                "🔄 Refreshing...",
+                Style::default()
+                    .fg(ACCENT_COLOR)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+
+        let status_content = Text::from(vec![Line::from(status_spans)]);
 
         let status_bar = Paragraph::new(status_content)
             .block(
@@ -505,14 +595,22 @@ impl TuiApp {
     }
 }
 
+#[allow(dead_code)]
 pub fn run_interactive_mode(projects: Vec<Project>) -> Result<Option<Project>> {
+    run_interactive_mode_with_receiver(projects, None)
+}
+
+pub fn run_interactive_mode_with_receiver(
+    projects: Vec<Project>,
+    update_receiver: Option<Receiver<ProjectList>>,
+) -> Result<Option<Project>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let result = TuiApp::run_interactive(projects, &mut terminal);
+    let result = TuiApp::run_interactive_with_receiver(projects, update_receiver, &mut terminal);
 
     disable_raw_mode()?;
     execute!(

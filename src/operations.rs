@@ -2,7 +2,7 @@ use crate::config::Config;
 use crate::opener::ProjectOpener;
 use crate::project_manager;
 use crate::scanner;
-use crate::tui::run_interactive_mode;
+use crate::tui::run_interactive_mode_with_receiver;
 use anyhow::{Context, Result};
 use clap_complete::{generate, Shell};
 use dialoguer::{Confirm, Input};
@@ -440,9 +440,10 @@ pub fn handle_open_project_by_name(
 pub fn handle_interactive_mode(config: &Config, verbose: bool) -> Result<()> {
     let opener = ProjectOpener::new();
 
-    let projects = project_manager::get_projects_with_cache(config, verbose)?;
+    let (projects, update_receiver) =
+        project_manager::get_projects_with_background_refresh(config, verbose)?;
 
-    if projects.is_empty() {
+    if projects.is_empty() && update_receiver.is_none() {
         println!(
             "No projects found. Try running with --refresh to rescan or check your configuration."
         );
@@ -453,7 +454,9 @@ pub fn handle_interactive_mode(config: &Config, verbose: bool) -> Result<()> {
         println!("Starting interactive mode with {} projects", projects.len());
     }
 
-    if let Some(selected_project) = run_interactive_mode(projects.projects().to_vec())? {
+    if let Some(selected_project) =
+        run_interactive_mode_with_receiver(projects.projects().to_vec(), update_receiver)?
+    {
         if verbose {
             println!(
                 "Selected project: {} at {}",
@@ -483,6 +486,7 @@ pub fn handle_fzf_mode(config: &Config, verbose: bool) -> Result<()> {
 
     let opener = ProjectOpener::new();
 
+    // For fzf mode, we use the regular cache function since fzf doesn't support dynamic updates
     let projects = project_manager::get_projects_with_cache(config, verbose)?;
 
     if projects.is_empty() {
